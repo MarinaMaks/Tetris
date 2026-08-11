@@ -3,30 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <title>Тетрис</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <!-- Фиксированный размер viewport -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- СТИЛИ -->
     <style>
-        body { margin: 0; background-color: #000; color: white; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative; }
-        
-        #score {
-            position: absolute;
-            top: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 24px;
-            z-index: 50;
-            padding: 10px 20px;
-            background: rgba(0, 0, 0, 0.7);
-            border: 2px solid lime;
-            border-radius: 10px;
+        body { 
+            margin: 0; background-color: #000; color: white; font-family: 'Courier New', monospace; 
+            display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative;
         }
-
+        
+        /* Жесткий размер холста */
         canvas {
+            width: 360px;
+            height: 640px;
             border: 3px solid lime;
             image-rendering: pixelated;
-            max-width: 95vw;
-            max-height: 80vh;
             box-sizing: border-box;
             z-index: 10;
             background-color: #000;
@@ -48,13 +39,13 @@
         .controls-mobile.inactive { pointer-events: none; opacity: 0.3; }
 
         .control-btn {
-            width: 64px;
-            height: 64px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             border: 3px solid white;
             background: rgba(255, 255, 255, 0.15);
             color: white;
-            font-size: 28px;
+            font-size: 24px;
             cursor: pointer;
             backdrop-filter: blur(5px);
             display: flex;
@@ -92,7 +83,6 @@
     </style>
 </head>
 
-<!-- ТЕЛО СТРАНИЦЫ -->
 <body>
 
 <div id="score">ОЧКИ: 0</div>
@@ -108,50 +98,40 @@
     <button id="restart-btn" onclick="resetGame()">ИГРАТЬ СНОВА</button>
 </div>
 
-
-<!-- СКРИПТ (с атрибутом defer для гарантии загрузки) -->
 <script defer>
-let ctx, scoreDiv, gameOverModal, finalScoreSpan, controls, activePiece;
-let board = [], ROWS = 20, COLS = 10, SQ;
-let dropInterval = 800, lastTime = 0, gameScore = 0, gameActive = false, fallTimer = null;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreDiv = document.getElementById('score');
+const gameOverModal = document.getElementById('game-over-modal');
+const finalScoreSpan = document.getElementById('final-score');
+const controls = document.getElementById('controls');
+
+// --- ЖЕСТКИЕ КОНСТАНТЫ ---
+const ROWS = 20;
+const COLS = 10;
+const SQ = 32; // 360px / 10 клеток = 36px. Берем чуть меньше для рамки. Никаких процентов!
+
+// Проверка контекста
+if (!ctx) {
+    alert("Ошибка: Ваш браузер не поддерживает Canvas HTML5.");
+}
+
+// --- ПОЛЕ ---
+let board = [];
+for (let r = 0; r < ROWS; r++) {
+    board[r] = new Array(COLS).fill(0);
+}
+
+// --- ФИГУРЫ [Матрица, Цвет] ---
 const PIECES = [
-    [ [[2,2,0],[0,2,2],[0,0,0]], "red"], 
-    [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],
-    [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],
-    [ [[2,2],[2,2]], "blue"],
-    [ [[0,0,2],[2,2,2],[0,0,0]], "purple"], 
-    [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"],
-    [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]
+    [ [[2,2,0],[0,2,2],[0,0,0]], "red"],           // Z
+    [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],          // S
+    [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],        // T
+    [ [[2,2],[2,2]], "blue"],                      // O
+    [ [[0,0,2],[2,2,2],[0,0,0]], "purple"],        // L
+    [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"], // I
+    [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]         // J
 ];
-
-// --- ЗАПУСК ---
-function initApp() {
-    const canvas = document.getElementById('gameCanvas');
-    if (!canvas || !canvas.getContext) {
-        alert("Ошибка: Браузер не поддерживает Canvas");
-        return;
-    }
-    ctx = canvas.getContext('2d');
-    scoreDiv = document.getElementById('score');
-    gameOverModal = document.getElementById('game-over-modal');
-    finalScoreSpan = document.getElementById('final-score');
-    controls = document.getElementById('controls');
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    
-    // Инициализация пустого поля
-    for (let r = 0; r < ROWS; r++) board[r] = new Array(COLS).fill(0);
-    
-    setupNewGame();
-}
-
-function resizeCanvas() {
-    const w = window.innerWidth * 0.9;
-    SQ = Math.max(20, Math.floor(w / COLS));
-    canvas.width = COLS * SQ;
-    canvas.height = ROWS * SQ;
-}
 
 // --- РИСОВАНИЕ ---
 function drawSquare(x, y, color){
@@ -169,7 +149,7 @@ function drawBoard(){
     }
 }
 
-// --- ФИГУРА ---
+// --- КЛАСС ФИГУРЫ ---
 class Piece {
     constructor(tetromino, color) {
         this.tetromino = tetromino;
@@ -236,7 +216,14 @@ function createPiece() {
     return new Piece(PIECES[index][0], PIECES[index][1]);
 }
 
-// --- ЛОГИКА ---
+// --- ЛОГИКА ИГРЫ ---
+let activePiece = null;
+let dropInterval = 800;
+let lastTime = 0;
+let gameScore = 0;
+let gameActive = false;
+let fallTimer = null;
+
 function updateScore() { scoreDiv.textContent = "ОЧКИ: " + gameScore; }
 function checkGameOver() { for(let c=0; c<COLS; c++){ if(board[0][c] !== 0) return true; } return false; }
 
@@ -264,11 +251,13 @@ function gameLoop(timeStamp = 0) {
     try {
         const deltaTime = timeStamp - lastTime;
         if (deltaTime > dropInterval) lastTime = timeStamp;
-        drawBoard(); if(activePiece) activePiece.draw();
+        drawBoard(); 
+        if(activePiece) activePiece.draw();
         requestAnimationFrame(gameLoop);
     } catch(e) {}
 }
 
+// --- УПРАВЛЕНИЕ ---
 function moveDown() { if(activePiece) activePiece.moveDown(); }
 function moveLeft() { if(activePiece) activePiece.moveLeft(); }
 function moveRight() { if(activePiece) activePiece.moveRight(); }
@@ -292,12 +281,21 @@ function resetGame() {
     setupNewGame();
 }
 
-// Ждем готовности документа
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initApp);
-} else {
-    initApp();
-}
+// --- ЗАПУСК ---
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM загружен. Запуск игры...");
+    setupNewGame();
+});
+
+// Принудительная проверка отображения (на случай черных экранов)
+setTimeout(() => {
+    if (gameActive && !checkGameOver()) {
+        console.log("Принудительное обновление экрана...");
+        drawBoard();
+        if(activePiece) activePiece.draw();
+    }
+}, 500);
+
 </script>
 
 </body>
