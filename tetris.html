@@ -2,11 +2,14 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Тетрис - DEBUG</title>
+    <title>Тетрис (Движок Арканоида)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
     <style>
-        body { margin: 0; background-color: #111; color: white; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative; }
+        body { 
+            margin: 0; background-color: #000; color: white; font-family: monospace; 
+            display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative;
+        }
         
         canvas {
             border: 4px solid lime;
@@ -34,102 +37,224 @@
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(50,0,0,0.95); color: red; padding: 30px; border: 3px solid red; z-index: 100; display: none;
+            text-align: center;
         }
-        #debug-log {
-            position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; 
-            border: 1px solid yellow; font-size: 12px; color: yellow; z-index: 200; max-height: 200px; overflow-y: auto;
-        }
+        #score { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 24px; z-index: 50; padding: 10px 20px; background: rgba(0,0,0,0.7); border: 2px solid lime; border-radius: 10px; }
     </style>
 </head>
 <body>
 
 <div id="score">ОЧКИ: 0</div>
-<div id="debug-log"></div>
 <canvas id="gameCanvas"></canvas>
 <div class="controls-mobile inactive" id="controls">
     <button class="control-btn" onclick="moveLeft()">←</button>
     <button class="control-btn" onclick="rotatePiece()">⟳</button>
     <button class="control-btn" onclick="moveRight()">→</button>
 </div>
-<div id="game-over-modal"><h2>КОНЕЦ ИГРЫ</h2><p id="final-score"></p><button onclick="resetGame()">ЗАНОВО</button></div>
+<div id="game-over-modal"><h2>КОНЕЦ ИГРЫ</h2><p id="final-score"></p><button onclick="resetGame()">ИГРАТЬ СНОВА</button></div>
 
 <script defer>
-const log = document.getElementById('debug-log');
-function addLog(text) {
-    const time = new Date().toLocaleTimeString();
-    log.innerHTML += `[${time}] ${text}<br>`;
-}
-
-addLog("Инициализация...");
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-if (!ctx) {
-    addLog("FATAL: Canvas context is null!");
-    return;
+const scoreDiv = document.getElementById('score');
+const gameOverModal = document.getElementById('game-over-modal');
+const finalScoreSpan = document.getElementById('final-score');
+const controls = document.getElementById('controls');
+
+// --- НАСТРОЙКИ АРКАНОИДА ---
+const ROWS = 20;
+const COLS = 10;
+const SQ = 32; // Размер клетки строго в пикселях
+
+canvas.width = COLS * SQ;
+canvas.height = ROWS * SQ;
+
+let board = [];
+for(let r=0; r<ROWS; r++){ board[r] = new Array(COLS).fill(0); }
+
+// --- ФИГУРЫ ПРОСТЫМ СПИСКОМ КООРДИНАТ (как мячик в арканоиде) ---
+// Вместо матриц [1,0,1], используем готовые смещения блоков относительно центра
+const SHAPES = [
+    // Z-фигурка (красная)
+    {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},
+    // L-фигурка (синяя)
+    {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},
+    // Гамма (зеленая)
+    {coords: [[0,0],[0,1],[1,1],[2,1]], color: 'lime'},
+    // Куб (желтый)
+    {coords: [[0,0],[0,1],[1,0],[1,1]], color: 'yellow'},
+    // Палка (голубая)
+    {coords: [[0,0],[1,0],[2,0],[3,0]], color: 'cyan'},
+    // Т-фигурка (фиолетовая)
+    {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},
+    // S-фигурка (оранжевая)
+    {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}
+];
+
+// --- ОТРИСОВКА (Метод Арканоида: одна функция на всё) ---
+function drawRect(x, y, color){
+    if(!ctx) return;
+    ctx.fillStyle = color;
+    ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
+    ctx.strokeStyle = '#111';
+    ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
 }
 
-// --- ЖЕСТКИЕ ПАРАМЕТРЫ ---
-const ROWS = 20, COLS = 10, SQ = 32;
-let board = [];
-for(let r=0;r<ROWS;r++) board[r] = new Array(COLS).fill(0);
-
-// --- ФИГУРА (минималистичная) ---
-class Piece {
-    constructor(){ this.x=3; this.y=0; this.color='red'; this.shape=[[1,1,0],[0,1,1],[0,0,0]]; }
-    draw(){
-        try {
-            // Принудительная очистка цветом фона (решение проблемы прозрачных контекстов)
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            addLog(`Попытка рисования (${this.x}, ${this.y}) цвет: ${this.color}`);
-            
-            for(let r=0; r<this.shape.length; r++){
-                for(let c=0; c<this.shape[r].length; c++){
-                    if(this.shape[r][c]){
-                        let px = (this.x + c) * SQ;
-                        let py = (this.y + r) * SQ;
-                        
-                        // Проверка границ внутри цикла
-                        if(px >= 0 && py >= 0 && px < canvas.width && py < canvas.height){
-                            ctx.fillStyle = this.color;
-                            ctx.fillRect(px, py, SQ, SQ);
-                            ctx.strokeStyle = 'white';
-                            ctx.strokeRect(px, py, SQ, SQ);
-                            addLog(`Нарисован квадрат at [${px}, ${py}]`);
-                        } else {
-                            addLog(`SKIP: Квадрат за пределами экрана at [${px}, ${py}]`);
-                        }
-                    }
-                }
+// Отрисовка целого игрового поля
+function drawBoard(){
+    for(let r=0; r<ROWS; r++){
+        for(let c=0; c<COLS; c++){
+            if(board[r][c]){
+                drawRect(c, r, board[r][c]);
             }
-        } catch(e) {
-            addLog("ERROR in Draw(): " + e.message);
         }
     }
 }
 
-let activePiece = new Piece();
-let gameActive = true;
+// --- ОБЪЕКТ ФИГУРЫ ---
+let activePiece = null;
+let dropInterval = 800;
+let lastTime = 0;
+let gameScore = 0;
+let gameActive = false;
+let fallTimer = null;
 
-// --- ЦИКЛ ---
-function gameLoop(){
+function createPiece(){
+    const index = Math.floor(Math.random() * SHAPES.length);
+    const shape = SHAPES[index];
+    return {
+        x: Math.floor(COLS / 2) - 2, // Стартовая позиция X
+        y: 0,                        // Наверху
+        coords: shape.coords,
+        color: shape.color
+    };
+}
+
+// Функция рисования текущей падающей фигуры
+function drawPiece(piece){
+    piece.coords.forEach(block => {
+        let px = piece.x + block[0];
+        let py = piece.y + block[1];
+        // Проверяем границы, чтобы не упасть в ошибку за пределами холста
+        if(px >= 0 && py >= 0 && px < COLS && py < ROWS){
+            drawRect(px, py, piece.color);
+        }
+    });
+}
+
+// Проверка столкновений (упрощенная)
+function checkCollision(piece, offsetX, offsetY){
+    for(let i=0; i<piece.coords.length; i++){
+        let px = piece.x + piece.coords[i][0] + offsetX;
+        let py = piece.y + piece.coords[i][1] + offsetY;
+        
+        if(px < 0 || px >= COLS || py >= ROWS) return true;
+        if(py >= 0 && board[py][px]) return true;
+    }
+    return false;
+}
+
+// --- ЛОГИКА ДВИЖЕНИЯ ---
+function moveDown(){
+    if(!checkCollision(activePiece, 0, 1)){
+        activePiece.y++;
+    } else {
+        lockPiece();
+        clearLines();
+        activePiece = createPiece();
+        if(checkCollision(activePiece, 0, 0)) endGame();
+    }
+}
+function moveLeft(){ if(!checkCollision(activePiece, -1, 0)) activePiece.x--; }
+function moveRight(){ if(!checkCollision(activePiece, 1, 0)) activePiece.x++; }
+function rotatePiece(){
+    // В этой упрощенной версии пока пропустим вращение для стабильности
+}
+
+// "Заморозка" фигуры доске
+function lockPiece(){
+    activePiece.coords.forEach(block => {
+        let px = activePiece.x + block[0];
+        let py = activePiece.y + block[1];
+        if(py >= 0) board[py][px] = activePiece.color;
+    });
+}
+
+// Очистка рядов (+10 очков)
+function clearLines(){
+    let rowCount = 0;
+    outer: for(let r=0; r<ROWS; r++){
+        for(let c=0; c<COLS; c++){
+            if(!board[r][c]) continue outer;
+        }
+        // Ряд полон
+        for(let y=r; y > 0; y--){
+            board[y] = [...board[y-1]];
+        }
+        board[0] = new Array(COLS).fill(0);
+        rowCount++;
+    }
+    if(rowCount > 0){
+        gameScore += rowCount * 10;
+        scoreDiv.textContent = "ОЧКИ: " + gameScore;
+    }
+}
+
+// --- ЦИКЛ ИГРЫ ---
+function gameLoop(timeStamp = 0){
     if(!gameActive) return;
-    activePiece.draw(); 
+    
+    const delta = timeStamp - lastTime;
+    if(delta > dropInterval){
+        lastTime = timeStamp;
+        moveDown();
+    }
+    
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height); // Принудительная очистка кадра
+    drawBoard();
+    drawPiece(activePiece);
+    
     requestAnimationFrame(gameLoop);
 }
 
-// Запускаем через таймер, чтобы DOM точно успел прорисоваться
-setTimeout(() => {
-    addLog("Запуск игрового цикла...");
-    gameLoop();
-}, 100);
+function startGame(){
+    gameActive = true;
+    activePiece = createPiece();
+    updateScore();
+    requestAnimationFrame(gameLoop);
+    fallTimer = setInterval(moveDown, dropInterval);
+    controls.classList.remove('inactive'); controls.classList.add('active');
+}
 
-// Управление (для теста появления кнопок)
-function moveLeft(){ addLog("Нажата кнопка Влево"); }
-function moveRight(){ addLog("Нажата кнопка Вправо"); }
-function rotatePiece(){ addLog("Нажата кнопка Вращать"); }
+function endGame(){
+    gameActive = false;
+    clearInterval(fallTimer);
+    finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
+    gameOverModal.style.display = 'flex';
+    controls.classList.remove('active'); controls.classList.add('inactive');
+}
+
+function resetGame(){
+    gameOverModal.style.display = 'none';
+    board = []; 
+    for(let r=0; r<ROWS; r++) board[r] = new Array(COLS).fill(0);
+    gameScore = 0;
+    startGame();
+}
+
+function updateScore(){
+    scoreDiv.textContent = "ОЧКИ: " + gameScore;
+}
+
+// --- ЗАПУСК ---
+document.addEventListener('DOMContentLoaded', () => {
+    addLog("Старт...");
+    startGame();
+});
+
+// Для диагностики (можно удалить если заработает)
+function addLog(msg){ /* console.log(msg); */ }
 
 </script>
 
