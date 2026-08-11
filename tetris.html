@@ -5,6 +5,7 @@
     <title>Тетрис</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
+    <!-- СТИЛИ -->
     <style>
         body { margin: 0; background-color: #000; color: white; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative; }
         
@@ -28,6 +29,7 @@
             max-height: 80vh;
             box-sizing: border-box;
             z-index: 10;
+            background-color: #000;
         }
 
         .controls-mobile {
@@ -61,7 +63,6 @@
         }
         .control-btn:active { background: rgba(255, 255, 255, 0.4); }
 
-        /* Экран конца игры */
         #game-over-modal {
             position: absolute;
             top: 50%; left: 50%;
@@ -88,9 +89,10 @@
             cursor: pointer;
             border-radius: 8px;
         }
-        #restart-btn:hover { background: #aaffaa; }
     </style>
 </head>
+
+<!-- ТЕЛО СТРАНИЦЫ -->
 <body>
 
 <div id="score">ОЧКИ: 0</div>
@@ -106,250 +108,195 @@
     <button id="restart-btn" onclick="resetGame()">ИГРАТЬ СНОВА</button>
 </div>
 
-<script>
-try {
+
+<!-- СКРИПТ (с атрибутом defer для гарантии загрузки) -->
+<script defer>
+let ctx, scoreDiv, gameOverModal, finalScoreSpan, controls, activePiece;
+let board = [], ROWS = 20, COLS = 10, SQ;
+let dropInterval = 800, lastTime = 0, gameScore = 0, gameActive = false, fallTimer = null;
+const PIECES = [
+    [ [[2,2,0],[0,2,2],[0,0,0]], "red"], 
+    [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],
+    [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],
+    [ [[2,2],[2,2]], "blue"],
+    [ [[0,0,2],[2,2,2],[0,0,0]], "purple"], 
+    [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"],
+    [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]
+];
+
+// --- ЗАПУСК ---
+function initApp() {
     const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreDiv = document.getElementById('score');
-    const gameOverModal = document.getElementById('game-over-modal');
-    const finalScoreSpan = document.getElementById('final-score');
-    const controls = document.getElementById('controls');
-
-    const ROWS = 20;
-    const COLS = 10;
-    let SQ;
-
-    function resizeCanvas() {
-        const w = window.innerWidth * 0.9;
-        SQ = Math.max(20, Math.floor(w / COLS));
-        canvas.width = COLS * SQ;
-        canvas.height = ROWS * SQ;
+    if (!canvas || !canvas.getContext) {
+        alert("Ошибка: Браузер не поддерживает Canvas");
+        return;
     }
+    ctx = canvas.getContext('2d');
+    scoreDiv = document.getElementById('score');
+    gameOverModal = document.getElementById('game-over-modal');
+    finalScoreSpan = document.getElementById('final-score');
+    controls = document.getElementById('controls');
+
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
+    
+    // Инициализация пустого поля
+    for (let r = 0; r < ROWS; r++) board[r] = new Array(COLS).fill(0);
+    
+    setupNewGame();
+}
 
-    // --- ПОЛЕ ---
-    let board = [];
-    for (let r = 0; r < ROWS; r++) {
-        board[r] = new Array(COLS).fill(0);
+function resizeCanvas() {
+    const w = window.innerWidth * 0.9;
+    SQ = Math.max(20, Math.floor(w / COLS));
+    canvas.width = COLS * SQ;
+    canvas.height = ROWS * SQ;
+}
+
+// --- РИСОВАНИЕ ---
+function drawSquare(x, y, color){
+    if (!ctx) return;
+    ctx.fillStyle = color === 0 ? '#000' : color;
+    ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
+    ctx.strokeStyle = '#111';
+    ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
+}
+function drawBoard(){
+    for(let r=0; r<ROWS; r++){
+        for(let c=0; c<COLS; c++){
+            drawSquare(c, r, board[r][c]);
+        }
     }
+}
 
-    // --- ФИГУРЫ [Матрица, Цвет] ---
-    const PIECES = [
-        [ [[2,2,0],[0,2,2],[0,0,0]], "red"], 
-        [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],
-        [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],
-        [ [[2,2],[2,2]], "blue"],
-        [ [[0,0,2],[2,2,2],[0,0,0]], "purple"], 
-        [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"],
-        [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]
-    ];
-
-    // --- РИСОВАНИЕ ---
-    function drawSquare(x, y, color){
-        if (!ctx) return;
-        ctx.fillStyle = color === 0 ? '#000' : color;
-        ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
-        ctx.strokeStyle = '#111';
-        ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
+// --- ФИГУРА ---
+class Piece {
+    constructor(tetromino, color) {
+        this.tetromino = tetromino;
+        this.color = color;
+        this.activeTetromino = 0;
+        this.x = Math.floor(COLS / 2) - 1;
+        this.y = 0;
     }
-    function drawBoard(){
-        for(let r=0; r<ROWS; r++){
-            for(let c=0; c<COLS; c++){
-                drawSquare(c, r, board[r][c]);
+    fill(colorVal){ 
+        const matrix = this.tetromino[this.activeTetromino];
+        for(let r=0; r<matrix.length; r++){
+            for(let c=0; c<matrix[r].length; c++){
+                if(matrix[r][c]) drawSquare(this.x+c, this.y+r, colorVal);
             }
         }
     }
-
-    // --- КЛАСС ФИГУРЫ ---
-    class Piece {
-        constructor(tetromino, color) {
-            this.tetromino = tetromino;
-            this.color = color;
-            this.activeTetromino = 0;
-            this.x = Math.floor(COLS / 2) - 1;
-            this.y = 0;
-        }
-        fill(colorVal){ 
-            const matrix = this.tetromino[this.activeTetromino];
-            for(let r=0; r<matrix.length; r++){
-                for(let c=0; c<matrix[r].length; c++){
-                    if(matrix[r][c]) drawSquare(this.x+c, this.y+r, colorVal);
-                }
-            }
-        }
-        draw(){ this.fill(this.color); }
-        undraw(){ this.fill(0); }
-        
-        moveDown(){
-            if(!this.collision(0, 1, this.activeTetromino)){
-                this.undraw(); this.y++; this.draw();
-            } else {
-                this.lock(); pSweep(); activePiece = createPiece();
-            }
-        }
-        moveLeft(){ if(!this.collision(-1, 0, this.activeTetromino)){ this.undraw(); this.x--; this.draw(); } }
-        moveRight(){ if(!this.collision(1, 0, this.activeTetromino)){ this.undraw(); this.x++; this.draw(); } }
-        
-        rotate(){
-            let nextPattern = (this.activeTetromino + 1) % this.tetromino.length;
-            let kick = 0;
-            if(this.collision(0, 0, nextPattern)) this.x > COLS / 2 ? kick = -1 : kick = 1;
-            if(!this.collision(kick, 0, nextPattern)){
-                this.undraw(); this.x += kick; this.activeTetromino = nextPattern; this.draw();
-            }
-        }
-
-        collision(offsetX, offsetY, pattern){
-            const matrix = this.tetromino[pattern];
-            for(let r=0; r<matrix.length; r++){
-                for(let c=0; c<matrix[r].length; c++){
-                    if(!matrix[r][c]) continue;
-                    let newX = this.x + c + offsetX;
-                    let newY = this.y + r + offsetY;
-                    if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
-                    if(newY < 0) continue;
-                    if(board[newY][newX] !== 0) return true;
-                }
-            }
-            return false;
-        }
-
-        lock(){
-            const matrix = this.tetromino[this.activeTetromino];
-            for(let r=0; r<matrix.length; r++){
-                for(let c=0; c<matrix[r].length; c++){
-                    if(!matrix[r][c]) continue;
-                    if(this.y + r < 0) break;
-                    board[this.y + r][this.x + c] = this.color;
-                }
-            }
+    draw(){ this.fill(this.color); }
+    undraw(){ this.fill(0); }
+    moveDown(){
+        if(!this.collision(0, 1, this.activeTetromino)){
+            this.undraw(); this.y++; this.draw();
+        } else {
+            this.lock(); pSweep(); activePiece = createPiece();
+            if(checkGameOver()) endGame();
         }
     }
-
-    function createPiece() {
-        const index = Math.floor(Math.random() * PIECES.length);
-        return new Piece(PIECES[index][0], PIECES[index][1]);
+    moveLeft(){ if(!this.collision(-1, 0, this.activeTetromino)){ this.undraw(); this.x--; this.draw(); } }
+    moveRight(){ if(!this.collision(1, 0, this.activeTetromino)){ this.undraw(); this.x++; this.draw(); } }
+    rotate(){
+        let nextPattern = (this.activeTetromino + 1) % this.tetromino.length;
+        let kick = 0;
+        if(this.collision(0, 0, nextPattern)) this.x > COLS / 2 ? kick = -1 : kick = 1;
+        if(!this.collision(kick, 0, nextPattern)){
+            this.undraw(); this.x += kick; this.activeTetromino = nextPattern; this.draw();
+        }
     }
-
-    // --- ЛОГИКА ИГРЫ ---
-    let activePiece = null;
-    let dropInterval = 800;
-    let lastTime = 0;
-    let gameScore = 0;
-    let gameActive = false;
-    let fallTimer = null;
-
-    function updateScore() {
-        scoreDiv.textContent = "ОЧКИ: " + gameScore;
-    }
-
-    function checkGameOver() {
-        // Проверяем самую верхнюю строку (индекс 0)
-        for (let c = 0; c < COLS; c++) {
-            if (board[0][c] !== 0) {
-                return true;
+    collision(offsetX, offsetY, pattern){
+        const matrix = this.tetromino[pattern];
+        for(let r=0; r<matrix.length; r++){
+            for(let c=0; c<matrix[r].length; c++){
+                if(!matrix[r][c]) continue;
+                let newX = this.x + c + offsetX;
+                let newY = this.y + r + offsetY;
+                if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                if(newY < 0) continue;
+                if(board[newY][newX] !== 0) return true;
             }
         }
         return false;
     }
-
-    function endGame() {
-        gameActive = false;
-        clearInterval(fallTimer);
-        
-        // Отключаем кнопки
-        controls.classList.remove('active');
-        controls.classList.add('inactive');
-        
-        // Показываем окно
-        finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
-        gameOverModal.style.display = 'flex';
-    }
-
-    function startGameLoop() {
-        fallTimer = setInterval(() => {
-            if (gameActive) moveDown();
-        }, dropInterval);
-    }
-
-    function setupNewGame() {
-        // Чистим доску
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-                board[r][c] = 0;
+    lock(){
+        const matrix = this.tetromino[this.activeTetromino];
+        for(let r=0; r<matrix.length; r++){
+            for(let c=0; c<matrix[r].length; c++){
+                if(!matrix[r][c]) continue;
+                if(this.y + r < 0) break;
+                board[this.y + r][this.x + c] = this.color;
             }
         }
-        
-        gameScore = 0;
-        updateScore();
-        
-        activePiece = createPiece();
-        
-        // ВАЖНО: Проверка ДО запуска цикла
-        if (checkGameOver()) {
-            endGame();
-            return;
-        }
+    }
+}
+function createPiece() {
+    const index = Math.floor(Math.random() * PIECES.length);
+    return new Piece(PIECES[index][0], PIECES[index][1]);
+}
 
-        gameActive = true;
+// --- ЛОГИКА ---
+function updateScore() { scoreDiv.textContent = "ОЧКИ: " + gameScore; }
+function checkGameOver() { for(let c=0; c<COLS; c++){ if(board[0][c] !== 0) return true; } return false; }
+
+function endGame() {
+    gameActive = false; clearInterval(fallTimer);
+    controls.classList.remove('active'); controls.classList.add('inactive');
+    finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
+    gameOverModal.style.display = 'flex';
+}
+
+function startGameLoop() {
+    fallTimer = setInterval(() => { if(gameActive) moveDown(); }, dropInterval);
+}
+
+function setupNewGame() {
+    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) board[r][c] = 0;
+    gameScore = 0; updateScore();
+    activePiece = createPiece();
+    if(checkGameOver()) { endGame(); return; }
+    gameActive = true; requestAnimationFrame(gameLoop); startGameLoop();
+    controls.classList.remove('inactive'); controls.classList.add('active');
+}
+
+function gameLoop(timeStamp = 0) {
+    try {
+        const deltaTime = timeStamp - lastTime;
+        if (deltaTime > dropInterval) lastTime = timeStamp;
+        drawBoard(); if(activePiece) activePiece.draw();
         requestAnimationFrame(gameLoop);
-        startGameLoop();
-    }
+    } catch(e) {}
+}
 
-    function gameLoop(timeStamp = 0) {
-        try {
-            const deltaTime = timeStamp - lastTime;
-            if (deltaTime > dropInterval) {
-                lastTime = timeStamp;
-            }
-            drawBoard();
-            if (activePiece) activePiece.draw();
-            requestAnimationFrame(gameLoop);
-        } catch(e) {}
-    }
-
-    function moveDown() { if(activePiece) activePiece.moveDown(); }
-    function moveLeft() { if(activePiece) activePiece.moveLeft(); }
-    function moveRight() { if(activePiece) activePiece.moveRight(); }
-    function rotatePiece() { if(activePiece) activePiece.rotate(); }
-
-    function pSweep() {
-        let rowCount = 0;
-        for (let r = 0; r < ROWS; r++) {
-            let isRowFull = true;
-            for (let c = 0; c < COLS; c++) {
-                if (board[r][c] === 0) { isRowFull = false; break; }
-            }
-            if (isRowFull) {
-                for (let y = r; y > 0; y--) {
-                    for (let c = 0; c < COLS; c++) {
-                        board[y][c] = board[y-1][c];
-                    }
-                }
-                for (let c = 0; c < COLS; c++) { board[0][c] = 0; }
-                rowCount++;
-            }
-        }
-        if (rowCount > 0) {
-            gameScore += rowCount * 10;
-            updateScore();
+function moveDown() { if(activePiece) activePiece.moveDown(); }
+function moveLeft() { if(activePiece) activePiece.moveLeft(); }
+function moveRight() { if(activePiece) activePiece.moveRight(); }
+function rotatePiece() { if(activePiece) activePiece.rotate(); }
+function pSweep() {
+    let rowCount = 0;
+    for(let r=0; r<ROWS; r++) {
+        let isRowFull = true;
+        for(let c=0; c<COLS; c++) if(board[r][c] === 0) { isRowFull = false; break; }
+        if(isRowFull) {
+            for(let y=r; y>0; y--) for(let c=0; c<COLS; c++) board[y][c] = board[y-1][c];
+            for(let c=0; c<COLS; c++) board[0][c] = 0;
+            rowCount++;
         }
     }
+    if(rowCount > 0) { gameScore += rowCount * 10; updateScore(); }
+}
 
-    // --- УПРАВЛЕНИЕ ВИДОМ ---
-    function resetGame() {
-        gameOverModal.style.display = 'none';
-        controls.classList.remove('inactive');
-        controls.classList.add('active');
-        setupNewGame();
-    }
-
-    // Автоматический старт первой партии
+function resetGame() {
+    gameOverModal.style.display = 'none';
     setupNewGame();
+}
 
-} catch (e) {
-    console.error("Fatal Error:", e);
+// Ждем готовности документа
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
 }
 </script>
 
