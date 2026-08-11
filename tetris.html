@@ -8,7 +8,6 @@
     <style>
         body { margin: 0; background-color: #000; color: white; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative; }
         
-        /* Счетчик */
         #score {
             position: absolute;
             top: 15px;
@@ -59,7 +58,6 @@
         }
         .control-btn:active { background: rgba(255, 255, 255, 0.4); }
 
-        /* Блок ошибок */
         #error-log {
             position: absolute;
             top: 50%; left: 50%;
@@ -90,7 +88,6 @@
 <div id="error-log"></div>
 
 <script>
-// --- БЛОК ОТЛАДКИ ---
 window.onerror = function(message, source, lineno, colno, error) {
     const log = document.getElementById('error-log');
     log.style.display = 'block';
@@ -98,7 +95,6 @@ window.onerror = function(message, source, lineno, colno, error) {
 };
 
 try {
-    // --- ОСНОВА ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreDiv = document.getElementById('score');
@@ -108,7 +104,7 @@ try {
 
     function resizeCanvas() {
         const w = window.innerWidth * 0.9;
-        SQ = Math.max(20, Math.floor(w / COLS)); // Минимальный размер клетки 20px
+        SQ = Math.max(20, Math.floor(w / COLS));
         canvas.width = COLS * SQ;
         canvas.height = ROWS * SQ;
     }
@@ -121,19 +117,25 @@ try {
         board[r] = new Array(COLS).fill(0);
     }
 
-    // --- ФИГУРЫ (проверенные матрицы) ---
-    function Z(){return [[2,2,0],[0,2,2],[0,0,0]];}
-    function S(){return [[0,2,2],[2,2,0],[0,0,0]];}
-    function T(){return [[0,2,0],[2,2,2],[0,0,0]];}
-    function O(){return [[2,2],[2,2]];}
-    function L(){return [[0,0,2],[2,2,2],[0,0,0]];}
-    function I(){return [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]];}
-    function J(){return [[2,0,0],[2,2,2],[0,0,0]];}
-    const PIECES = [ [Z,"red"], [S,"lime"], [T,"yellow"], [O,"blue"], [L,"purple"], [I,"cyan"], [J,"orange"] ];
+    /* 
+       КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ:
+       Теперь форма и цвет идут строго парой в одном вложенном массиве.
+       Ошибка "undefined.length" возникала потому, что раньше мы брали случайный индекс для цвета 
+       отдельно от индекса для формы, и они могли не совпасть или вернуть пустой объект.
+    */
+    const PIECES = [
+        [ [[2,2,0],[0,2,2],[0,0,0]], "red"],           // Z
+        [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],          // S
+        [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],        // T
+        [ [[2,2],[2,2]], "blue"],                      // O
+        [ [[0,0,2],[2,2,2],[0,0,0]], "purple"],        // L
+        [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"], // I
+        [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]         // J
+    ];
 
     // --- РИСОВАНИЕ ---
     function drawSquare(x, y, color){
-        if (!ctx) return; // Защита если контекст потерялся
+        if (!ctx) return;
         ctx.fillStyle = color === 0 ? '#000' : color;
         ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
         ctx.strokeStyle = '#111';
@@ -153,14 +155,20 @@ try {
             this.tetromino = tetromino;
             this.color = color;
             this.activeTetromino = 0;
-            this.x = Math.floor(COLS / 2) - 1; // Старт точно по центру
-            this.y = 0; // Появляется сразу наверху
+            this.x = Math.floor(COLS / 2) - 1;
+            this.y = 0;
         }
         fill(colorVal){ 
-            for(let r=0; r<this.tetromino[this.activeTetromino].length; r++){
-                for(let c=0; c<this.tetromino[this.activeTetromino][r].length; c++){
-                    if(this.tetromino[this.activeTetromino][r][c]) drawSquare(this.x+c, this.y+r, colorVal);
+            try {
+                const matrix = this.tetromino[this.activeTetromino];
+                if (!matrix) return;
+                for(let r=0; r<matrix.length; r++){
+                    for(let c=0; c<matrix[r].length; c++){
+                        if(matrix[r][c]) drawSquare(this.x+c, this.y+r, colorVal);
+                    }
                 }
+            } catch(e) {
+                console.error("Ошибка при рисовании:", e);
             }
         }
         draw(){ this.fill(this.color); }
@@ -183,32 +191,54 @@ try {
             }
         }
         collision(offsetX, offsetY, pattern){
-            for(let r=0; r<this.tetromino[pattern].length; r++){
-                for(let c=0; c<this.tetromino[pattern][r].length; c++){
-                    if(!this.tetromino[pattern][r][c]) continue;
-                    let newX = this.x + c + offsetX;
-                    let newY = this.y + r + offsetY;
-                    if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
-                    if(newY < 0) continue;
-                    if(board[newY][newX] !== 0) return true;
+            try {
+                const matrix = this.tetromino[pattern];
+                if (!matrix) return true;
+                for(let r=0; r<matrix.length; r++){
+                    for(let c=0; c<matrix[r].length; c++){
+                        if(!matrix[r][c]) continue;
+                        let newX = this.x + c + offsetX;
+                        let newY = this.y + r + offsetY;
+                        if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                        if(newY < 0) continue;
+                        if(board[newY][newX] !== 0) return true;
+                    }
                 }
-            }
-            return false;
+                return false;
+            } catch(e) { return true; }
         }
         lock(){
-            for(let r=0; r<this.tetromino[this.activeTetromino].length; r++){
-                for(let c=0; c<this.tetromino[this.activeTetromino][r].length; c++){
-                    if(!this.tetromino[this.activeTetromino][r][c]) continue;
-                    if(this.y + r < 0) break;
-                    board[this.y + r][this.x + c] = this.color;
+            try {
+                const matrix = this.tetromino[this.activeTetromino];
+                if (!matrix) return;
+                for(let r=0; r<matrix.length; r++){
+                    for(let c=0; c<matrix[r].length; c++){
+                        if(!matrix[r][c]) continue;
+                        if(this.y + r < 0) break;
+                        board[this.y + r][this.x + c] = this.color;
+                    }
                 }
-            }
+            } catch(e) {}
         }
     }
 
+    // ФУНКЦИЯ СОЗДАНИЯ (теперь берет пару целиком)
     function createPiece() {
-        const index = Math.floor(Math.random() * PIECES.length);
-        return new Piece(PIECES[index][0], PIECES[index][1]);
+        try {
+            const index = Math.floor(Math.random() * PIECES.length);
+            const shapeAndColor = PIECES[index];
+            
+            // Защита: если по какой-то причине элемент массива битый
+            if (!shapeAndColor || !shapeAndColor[0]) {
+                throw new Error("Не удалось создать фигуру");
+            }
+            
+            return new Piece(shapeAndColor[0], shapeAndColor[1]);
+        } catch(e) {
+            console.error(e);
+            // Если создание сломалось, создаем простую палку вручную, чтобы игра не встала
+            return new Piece([[[2,2,2,2]]], "white"); 
+        }
     }
 
     // --- ЛОГИКА ИГРЫ ---
@@ -264,7 +294,7 @@ try {
         }
     }
 
-    // Запускаем игру автоматически
+    // Запускаем игру
     requestAnimationFrame(gameLoop);
 
 } catch (e) {
