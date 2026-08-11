@@ -40,7 +40,11 @@
             gap: 15px;
             z-index: 20;
             pointer-events: none;
+            transition: opacity 0.3s;
         }
+        .controls-mobile.active { pointer-events: all; opacity: 1; }
+        .controls-mobile.inactive { pointer-events: none; opacity: 0.3; }
+
         .control-btn {
             width: 64px;
             height: 64px;
@@ -51,53 +55,66 @@
             font-size: 28px;
             cursor: pointer;
             backdrop-filter: blur(5px);
-            pointer-events: all;
             display: flex;
             justify-content: center;
             align-items: center;
         }
         .control-btn:active { background: rgba(255, 255, 255, 0.4); }
 
-        #error-log {
+        /* Экран конца игры */
+        #game-over-modal {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(100, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
             color: red;
-            padding: 20px;
-            border: 2px solid red;
-            border-radius: 10px;
+            padding: 30px 40px;
+            border: 3px solid red;
+            border-radius: 15px;
             text-align: center;
-            line-height: 1.4;
             z-index: 100;
             display: none;
-            max-width: 80%;
-            font-size: 16px;
+            flex-direction: column;
+            gap: 15px;
         }
+        #final-score { font-size: 28px; font-weight: bold; }
+        #restart-btn {
+            padding: 12px 30px;
+            background: lime;
+            color: black;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+        #restart-btn:hover { background: #aaffaa; }
     </style>
 </head>
 <body>
 
 <div id="score">ОЧКИ: 0</div>
 <canvas id="gameCanvas"></canvas>
-<div class="controls-mobile">
+<div class="controls-mobile inactive" id="controls">
     <button class="control-btn" onclick="moveLeft()">←</button>
     <button class="control-btn" onclick="rotatePiece()">⟳</button>
     <button class="control-btn" onclick="moveRight()">→</button>
 </div>
-<div id="error-log"></div>
+<div id="game-over-modal">
+    <h2 style="margin:0;">КОНЕЦ ИГРЫ</h2>
+    <p id="final-score"></p>
+    <button id="restart-btn" onclick="resetGame()">ИГРАТЬ СНОВА</button>
+</div>
 
 <script>
-window.onerror = function(message, source, lineno, colno, error) {
-    const log = document.getElementById('error-log');
-    log.style.display = 'block';
-    log.innerHTML = '<b>Ошибка выполнения:</b><br>' + message + '<br>Строка: ' + lineno;
-};
-
 try {
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreDiv = document.getElementById('score');
+    const gameOverModal = document.getElementById('game-over-modal');
+    const finalScoreSpan = document.getElementById('final-score');
+    const controls = document.getElementById('controls');
+
     const ROWS = 20;
     const COLS = 10;
     let SQ;
@@ -117,20 +134,15 @@ try {
         board[r] = new Array(COLS).fill(0);
     }
 
-    /* 
-       КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ:
-       Теперь форма и цвет идут строго парой в одном вложенном массиве.
-       Ошибка "undefined.length" возникала потому, что раньше мы брали случайный индекс для цвета 
-       отдельно от индекса для формы, и они могли не совпасть или вернуть пустой объект.
-    */
+    // --- ФИГУРЫ [Матрица, Цвет] ---
     const PIECES = [
-        [ [[2,2,0],[0,2,2],[0,0,0]], "red"],           // Z
-        [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],          // S
-        [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],        // T
-        [ [[2,2],[2,2]], "blue"],                      // O
-        [ [[0,0,2],[2,2,2],[0,0,0]], "purple"],        // L
-        [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"], // I
-        [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]         // J
+        [ [[2,2,0],[0,2,2],[0,0,0]], "red"], 
+        [ [[0,2,2],[2,2,0],[0,0,0]], "lime"],
+        [ [[0,2,0],[2,2,2],[0,0,0]], "yellow"],
+        [ [[2,2],[2,2]], "blue"],
+        [ [[0,0,2],[2,2,2],[0,0,0]], "purple"], 
+        [ [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]], "cyan"],
+        [ [[2,0,0],[2,2,2],[0,0,0]], "orange"]
     ];
 
     // --- РИСОВАНИЕ ---
@@ -159,20 +171,16 @@ try {
             this.y = 0;
         }
         fill(colorVal){ 
-            try {
-                const matrix = this.tetromino[this.activeTetromino];
-                if (!matrix) return;
-                for(let r=0; r<matrix.length; r++){
-                    for(let c=0; c<matrix[r].length; c++){
-                        if(matrix[r][c]) drawSquare(this.x+c, this.y+r, colorVal);
-                    }
+            const matrix = this.tetromino[this.activeTetromino];
+            for(let r=0; r<matrix.length; r++){
+                for(let c=0; c<matrix[r].length; c++){
+                    if(matrix[r][c]) drawSquare(this.x+c, this.y+r, colorVal);
                 }
-            } catch(e) {
-                console.error("Ошибка при рисовании:", e);
             }
         }
         draw(){ this.fill(this.color); }
         undraw(){ this.fill(0); }
+        
         moveDown(){
             if(!this.collision(0, 1, this.activeTetromino)){
                 this.undraw(); this.y++; this.draw();
@@ -182,6 +190,7 @@ try {
         }
         moveLeft(){ if(!this.collision(-1, 0, this.activeTetromino)){ this.undraw(); this.x--; this.draw(); } }
         moveRight(){ if(!this.collision(1, 0, this.activeTetromino)){ this.undraw(); this.x++; this.draw(); } }
+        
         rotate(){
             let nextPattern = (this.activeTetromino + 1) % this.tetromino.length;
             let kick = 0;
@@ -190,86 +199,120 @@ try {
                 this.undraw(); this.x += kick; this.activeTetromino = nextPattern; this.draw();
             }
         }
+
         collision(offsetX, offsetY, pattern){
-            try {
-                const matrix = this.tetromino[pattern];
-                if (!matrix) return true;
-                for(let r=0; r<matrix.length; r++){
-                    for(let c=0; c<matrix[r].length; c++){
-                        if(!matrix[r][c]) continue;
-                        let newX = this.x + c + offsetX;
-                        let newY = this.y + r + offsetY;
-                        if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
-                        if(newY < 0) continue;
-                        if(board[newY][newX] !== 0) return true;
-                    }
+            const matrix = this.tetromino[pattern];
+            for(let r=0; r<matrix.length; r++){
+                for(let c=0; c<matrix[r].length; c++){
+                    if(!matrix[r][c]) continue;
+                    let newX = this.x + c + offsetX;
+                    let newY = this.y + r + offsetY;
+                    if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                    if(newY < 0) continue;
+                    if(board[newY][newX] !== 0) return true;
                 }
-                return false;
-            } catch(e) { return true; }
+            }
+            return false;
         }
+
         lock(){
-            try {
-                const matrix = this.tetromino[this.activeTetromino];
-                if (!matrix) return;
-                for(let r=0; r<matrix.length; r++){
-                    for(let c=0; c<matrix[r].length; c++){
-                        if(!matrix[r][c]) continue;
-                        if(this.y + r < 0) break;
-                        board[this.y + r][this.x + c] = this.color;
-                    }
+            const matrix = this.tetromino[this.activeTetromino];
+            for(let r=0; r<matrix.length; r++){
+                for(let c=0; c<matrix[r].length; c++){
+                    if(!matrix[r][c]) continue;
+                    if(this.y + r < 0) break;
+                    board[this.y + r][this.x + c] = this.color;
                 }
-            } catch(e) {}
+            }
         }
     }
 
-    // ФУНКЦИЯ СОЗДАНИЯ (теперь берет пару целиком)
     function createPiece() {
-        try {
-            const index = Math.floor(Math.random() * PIECES.length);
-            const shapeAndColor = PIECES[index];
-            
-            // Защита: если по какой-то причине элемент массива битый
-            if (!shapeAndColor || !shapeAndColor[0]) {
-                throw new Error("Не удалось создать фигуру");
-            }
-            
-            return new Piece(shapeAndColor[0], shapeAndColor[1]);
-        } catch(e) {
-            console.error(e);
-            // Если создание сломалось, создаем простую палку вручную, чтобы игра не встала
-            return new Piece([[[2,2,2,2]]], "white"); 
-        }
+        const index = Math.floor(Math.random() * PIECES.length);
+        return new Piece(PIECES[index][0], PIECES[index][1]);
     }
 
     // --- ЛОГИКА ИГРЫ ---
-    let activePiece = createPiece();
+    let activePiece = null;
     let dropInterval = 800;
     let lastTime = 0;
     let gameScore = 0;
+    let gameActive = false;
+    let fallTimer = null;
 
     function updateScore() {
         scoreDiv.textContent = "ОЧКИ: " + gameScore;
+    }
+
+    function checkGameOver() {
+        // Проверяем самую верхнюю строку (индекс 0)
+        for (let c = 0; c < COLS; c++) {
+            if (board[0][c] !== 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function endGame() {
+        gameActive = false;
+        clearInterval(fallTimer);
+        
+        // Отключаем кнопки
+        controls.classList.remove('active');
+        controls.classList.add('inactive');
+        
+        // Показываем окно
+        finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
+        gameOverModal.style.display = 'flex';
+    }
+
+    function startGameLoop() {
+        fallTimer = setInterval(() => {
+            if (gameActive) moveDown();
+        }, dropInterval);
+    }
+
+    function setupNewGame() {
+        // Чистим доску
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                board[r][c] = 0;
+            }
+        }
+        
+        gameScore = 0;
+        updateScore();
+        
+        activePiece = createPiece();
+        
+        // ВАЖНО: Проверка ДО запуска цикла
+        if (checkGameOver()) {
+            endGame();
+            return;
+        }
+
+        gameActive = true;
+        requestAnimationFrame(gameLoop);
+        startGameLoop();
     }
 
     function gameLoop(timeStamp = 0) {
         try {
             const deltaTime = timeStamp - lastTime;
             if (deltaTime > dropInterval) {
-                moveDown();
                 lastTime = timeStamp;
             }
             drawBoard();
-            activePiece.draw();
+            if (activePiece) activePiece.draw();
             requestAnimationFrame(gameLoop);
-        } catch(e) {
-            console.error("Критическая ошибка цикла:", e);
-        }
+        } catch(e) {}
     }
 
-    function moveDown() { activePiece.moveDown(); }
-    function moveLeft() { activePiece.moveLeft(); }
-    function moveRight() { activePiece.moveRight(); }
-    function rotatePiece() { activePiece.rotate(); }
+    function moveDown() { if(activePiece) activePiece.moveDown(); }
+    function moveLeft() { if(activePiece) activePiece.moveLeft(); }
+    function moveRight() { if(activePiece) activePiece.moveRight(); }
+    function rotatePiece() { if(activePiece) activePiece.rotate(); }
 
     function pSweep() {
         let rowCount = 0;
@@ -294,12 +337,19 @@ try {
         }
     }
 
-    // Запускаем игру
-    requestAnimationFrame(gameLoop);
+    // --- УПРАВЛЕНИЕ ВИДОМ ---
+    function resetGame() {
+        gameOverModal.style.display = 'none';
+        controls.classList.remove('inactive');
+        controls.classList.add('active');
+        setupNewGame();
+    }
+
+    // Автоматический старт первой партии
+    setupNewGame();
 
 } catch (e) {
-    document.getElementById('error-log').style.display = 'block';
-    document.getElementById('error-log').innerText = "Фатальная ошибка загрузки:\n" + e.message;
+    console.error("Fatal Error:", e);
 }
 </script>
 
