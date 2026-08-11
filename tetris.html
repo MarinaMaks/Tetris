@@ -2,21 +2,21 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Тетрис - Исправленная версия</title>
+    <title>Тетрис - Финал v2</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
     <style>
         body { 
             margin: 0; background-color: #000; color: white; font-family: 'Courier New', monospace; 
             display: flex; justify-content: center; align-items: flex-start; height: 100vh; overflow: hidden; position: relative;
-            padding-top: 40px; /* Еще сильнее приподнимаем поле */
+            padding-top: 40px; 
         }
         
         canvas {
             border: 4px solid lime;
             image-rendering: pixelated;
             width: 360px;
-            height: 580px; /* Уменьшили высоту полотна, чтобы оставить место для кнопок внизу */
+            height: 580px;
             box-sizing: border-box;
             z-index: 10;
             background-color: #000;
@@ -35,43 +35,54 @@
         }
         .control-btn:active { background: rgba(255,255,255,0.4); }
 
-        /* --- НОВЫЙ ИНТЕРФЕЙС ИГРЫ ОКОНЧЕНА --- */
+        /* --- НОВЫЙ ИНТЕРФЕЙС С КРАСНЫМИ РАМКАМИ --- */
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(20, 0, 0, 0.95); color: red; border: 3px solid red; z-index: 100; 
-            display: none; text-align: center; width: 90vw; max-width: 400px; padding: 20px;
+            background: rgba(10, 0, 0, 0.95); color: white; z-index: 100; 
+            display: none; text-align: center; width: 90vw; max-width: 400px; padding: 15px;
             border-radius: 15px;
         }
-        .modal-title { font-size: 32px; margin-bottom: 15px; letter-spacing: 2px; }
-        .score-display { font-size: 24px; margin-bottom: 20px; color: cyan; }
-        
-        .rating-container {
-            margin-bottom: 25px;
-            text-align: left;
+
+        .modal-block {
+            border: 2px solid red;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: rgba(20, 0, 0, 0.7);
         }
+        
+        .modal-title { 
+            font-size: 28px; margin-bottom: 10px; letter-spacing: 2px; 
+            text-shadow: 0 0 5px red;
+        }
+        .score-display { font-size: 22px; margin-bottom: 10px; color: cyan; }
+        
         .rating-container h3 { 
-            font-size: 18px; margin-bottom: 10px; color: white; border-bottom: 1px solid #444; padding-bottom: 5px; 
+            font-size: 16px; margin-bottom: 8px; color: white; text-transform: uppercase; letter-spacing: 1px;
         }
         #rating-list { 
             list-style: decimal inside; 
             color: #0f0; 
             text-align: left; 
             padding-left: 0; 
-            max-height: 120px; 
+            max-height: 100px; 
             overflow-y: auto; 
             margin: 0;
+            font-size: 16px;
         }
-        #rating-list li { margin-bottom: 4px; font-size: 18px; }
+        #rating-list li { margin-bottom: 4px; }
 
         #restart-btn-final {
-            padding: 14px 30px; 
+            width: 100%;
+            padding: 14px 0; 
             background: lime; 
             color: black; 
-            border: none; 
+            border: 2px solid red;
             font-size: 20px; 
             font-weight: bold; 
             cursor: pointer; 
             border-radius: 8px;
+            text-transform: uppercase;
         }
         #restart-btn-final:hover { filter: brightness(1.1); }
 
@@ -88,18 +99,24 @@
     <button class="control-btn" onclick="moveRight()">→</button>
 </div>
 
-<!-- РАЗДЕЛЕННЫЙ ИНТЕРФЕЙС КОНЦА ИГРЫ -->
+<!-- ИНТЕРФЕЙС КОНЦА ИГРЫ В БЛОКАХ -->
 <div id="game-over-modal">
-    <div class="modal-title">КОНЕЦ ИГРЫ</div>
+    <div class="modal-block title-block">
+        <div class="modal-title">КОНЕЦ ИГРЫ</div>
+    </div>
     
-    <div class="score-display" id="final-score"></div>
+    <div class="modal-block score-block">
+        <div class="score-display" id="final-score"></div>
+    </div>
     
-    <div class="rating-container">
+    <div class="modal-block rating-block">
         <h3>ТОП-5 РЕЗУЛЬТАТОВ:</h3>
         <ol id="rating-list"></ol>
     </div>
     
-    <button id="restart-btn-final" onclick="resetGame()">ИГРАТЬ СНОВА</button>
+    <div class="modal-block button-block">
+        <button id="restart-btn-final" onclick="resetGame()">ИГРАТЬ СНОВА</button>
+    </div>
 </div>
 
 <script defer>
@@ -121,7 +138,7 @@ canvas.height = ROWS * SQ;
 let board = [];
 for(let r=0; r<ROWS; r++){ board[r] = new Array(COLS).fill(0); }
 
-// --- ФИГУРЫ (Базовые формы без учета вращений) ---
+// --- ФИГУРЫ ---
 const SHAPES = [
     {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},           // Z
     {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},          // L
@@ -131,18 +148,6 @@ const SHAPES = [
     {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},        // Т
     {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}         // S
 ];
-
-// Таблица сдвигов для правильного вращения (Kick Offsets)
-const KICK_TABLE = {
-    "T":   [ [[0,0],[-1,0],[0,-1],[-1,1]],  [[0,0],[1,0],[0,-1],[1,-1]] ],
-    "I":   [ [[0,0],[-2,0],[1,0],[-2,-1]],  [[0,0],[2,0],[-1,0],[2,1]], [[0,0],[1,0],[-2,0],[1,-2]], [[0,0],[-1,0],[2,0],[-1,2]] ],
-    "LQJZ":[ [[0,0],[-1,0],[0,-1],[-1,1]],  [[0,0],[1,0],[0,-1],[1,-1]] ]
-};
-
-function getShapeKey(piece){
-    const colors = {"purple":"T", "cyan":"I"};
-    return colors[piece.color] || "LQJZ";
-}
 
 // --- ОТРИСОВКА ---
 function drawRect(x, y, color){
@@ -194,45 +199,74 @@ function checkCollision(piece, offsetX, offsetY){
     return false;
 }
 
-// --- ВРАЩЕНИЕ (Исправленное) ---
+// --- ВРАЩЕНИЕ (Исправлено на 360 градусов) ---
 function rotateCoords(coords){
-    let maxSize = 4;
-    let matrix = Array.from({length: maxSize}, () => Array(maxSize).fill(0));
-    coords.forEach(b => matrix[b[1]][b[0]] = 1);
-    let rotated = matrix[0].map((val, index) => matrix.map(row => row[index]).reverse());
+    // Находим границы фигуры
+    let minX = Math.min(...coords.map(p=>p[0]));
+    let maxX = Math.max(...coords.map(p=>p[0]));
+    let minY = Math.min(...coords.map(p=>p[1]));
+    let maxY = Math.max(...coords.map(p=>p[1]));
+    
+    let w = maxX - minX + 1;
+    let h = maxY - minY + 1;
+    
+    // Создаем матрицу точно по размеру фигуры
+    let matrix = Array.from({length: h}, () => Array(w).fill(0));
+    coords.forEach(b => {
+        let mx = b[0] - minX;
+        let my = b[1] - minY;
+        matrix[my][mx] = 1;
+    });
+    
+    // Поворот (транспонирование + реверс)
+    let rotatedMatrix = matrix[0].map((val, idx) => matrix.map(row => row[idx]).reverse());
+    
+    // Собираем новые координаты
     let newCoords = [];
-    for(let r=0; r<maxSize; r++){ for(let c=0; c<maxSize; c++){ if(rotated[r][c]) newCoords.push([c, r]); } }
+    for(let r=0; r<rotatedMatrix.length; r++){
+        for(let c=0; c<rotatedMatrix[r].length; c++){
+            if(rotatedMatrix[r][c]){
+                // Возвращаем к глобальным координатам
+                newCoords.push([c + minX, r + minY]); 
+            }
+        }
+    }
+    
+    // Центрируем относительно центра масс этой новой формы
     let cx = newCoords.reduce((a,b)=>a+b[0], 0)/newCoords.length;
     let cy = newCoords.reduce((a,b)=>a+b[1], 0)/newCoords.length;
     return newCoords.map(p => [Math.round(p[0]-cx), Math.round(p[1]-cy)]);
 }
 
-function applyKick(current, rotated, direction){
-    const key = getShapeKey(activePiece);
-    const kicks = KICK_TABLE[key][direction];
-    for(let kick of kicks){
-        let dx = kick[0], dy = kick[1];
-        if(!checkCollision({...activePiece, coords: rotated}, dx, dy)){
-            activePiece.x += dx;
-            activePiece.y += dy;
-            activePiece.coords = rotated;
-            return true;
+function applyKick(current, rotated){
+    // Простой сдвиг у стены (пинок)
+    let dx = 0;
+    if(checkCollision({...activePiece, coords: rotated}, 0, 0)) return false;
+    
+    // Если уперлись в правую стену при повороте
+    while(activePiece.x + Math.max(...rotated.map(p=>p[0])) >= COLS){
+        dx--;
+        if(checkCollision({...activePiece, coords: rotated}, dx, 0)){
+            dx++; break;
         }
     }
-    return false;
+    // Если уперлись в левую стену
+    while(activePiece.x + Math.min(...rotated.map(p=>p[0])) < 0){
+        dx++;
+        if(checkCollision({...activePiece, coords: rotated}, dx, 0)){
+            dx--; break;
+        }
+    }
+    
+    activePiece.x += dx;
+    activePiece.coords = rotated;
+    return true;
 }
 
 function rotatePiece(){
     if(!activePiece) return;
     let rotated = rotateCoords(activePiece.coords);
-    let key = getShapeKey(activePiece);
-    
-    if(key === "I"){ // Для палки направление важно
-        if(applyKick(activePiece.coords, rotated, 0)) return;
-        if(applyKick(activePiece.coords, rotated, 1)) return;
-    } else {
-        if(applyKick(activePiece.coords, rotated, 0)) return;
-    }
+    applyKick(activePiece.coords, rotated);
 }
 
 // --- ЛОГИКА ДВИЖЕНИЯ ---
