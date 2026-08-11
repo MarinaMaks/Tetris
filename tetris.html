@@ -2,13 +2,14 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Тетрис (Движок Арканоида)</title>
+    <title>Тетрис - Финал</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
     <style>
         body { 
             margin: 0; background-color: #000; color: white; font-family: monospace; 
-            display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; position: relative;
+            display: flex; justify-content: center; align-items: flex-start; height: 100vh; overflow: hidden; position: relative;
+            padding-top: 20px; /* Поднимаем всё поле от верхнего края */
         }
         
         canvas {
@@ -22,7 +23,7 @@
         }
 
         .controls-mobile {
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
             display: grid; grid-template-columns: auto auto auto; gap: 15px; z-index: 20;
             pointer-events: none; transition: opacity 0.3s;
         }
@@ -37,9 +38,11 @@
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(50,0,0,0.95); color: red; padding: 30px; border: 3px solid red; z-index: 100; display: none;
-            text-align: center;
+            text-align: center; max-width: 90vw;
         }
         #score { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 24px; z-index: 50; padding: 10px 20px; background: rgba(0,0,0,0.7); border: 2px solid lime; border-radius: 10px; }
+        #rating-list { list-style: decimal inside; color: cyan; text-align: left; padding-left: 0; max-height: 150px; overflow-y: auto; }
+        #rating-list li { margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -51,7 +54,13 @@
     <button class="control-btn" onclick="rotatePiece()">⟳</button>
     <button class="control-btn" onclick="moveRight()">→</button>
 </div>
-<div id="game-over-modal"><h2>КОНЕЦ ИГРЫ</h2><p id="final-score"></p><button onclick="resetGame()">ИГРАТЬ СНОВА</button></div>
+<div id="game-over-modal">
+    <h2 style="margin:0;">КОНЕЦ ИГРЫ</h2>
+    <p id="final-score"></p>
+    <h3>ТОП-5:</h3>
+    <ol id="rating-list"></ol>
+    <button onclick="resetGame()" style="margin-top:15px;padding:12px 25px;background:lime;color:black;border:none;font-weight:bold;cursor:pointer;">ИГРАТЬ СНОВА</button>
+</div>
 
 <script defer>
 const canvas = document.getElementById('gameCanvas');
@@ -59,39 +68,31 @@ const ctx = canvas.getContext('2d');
 const scoreDiv = document.getElementById('score');
 const gameOverModal = document.getElementById('game-over-modal');
 const finalScoreSpan = document.getElementById('final-score');
+const ratingList = document.getElementById('rating-list');
 const controls = document.getElementById('controls');
 
-// --- НАСТРОЙКИ АРКАНОИДА ---
+// --- НАСТРОЙКИ ---
 const ROWS = 20;
 const COLS = 10;
-const SQ = 32; // Размер клетки строго в пикселях
-
+const SQ = 32; 
 canvas.width = COLS * SQ;
 canvas.height = ROWS * SQ;
 
 let board = [];
 for(let r=0; r<ROWS; r++){ board[r] = new Array(COLS).fill(0); }
 
-// --- ФИГУРЫ ПРОСТЫМ СПИСКОМ КООРДИНАТ (как мячик в арканоиде) ---
-// Вместо матриц [1,0,1], используем готовые смещения блоков относительно центра
+// --- ФИГУРЫ (Координаты блоков) ---
 const SHAPES = [
-    // Z-фигурка (красная)
-    {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},
-    // L-фигурка (синяя)
-    {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},
-    // Гамма (зеленая)
-    {coords: [[0,0],[0,1],[1,1],[2,1]], color: 'lime'},
-    // Куб (желтый)
-    {coords: [[0,0],[0,1],[1,0],[1,1]], color: 'yellow'},
-    // Палка (голубая)
-    {coords: [[0,0],[1,0],[2,0],[3,0]], color: 'cyan'},
-    // Т-фигурка (фиолетовая)
-    {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},
-    // S-фигурка (оранжевая)
-    {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}
+    {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},           // Z
+    {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},          // L
+    {coords: [[0,0],[0,1],[1,1],[2,1]], color: 'lime'},          // Гамма
+    {coords: [[0,0],[0,1],[1,0],[1,1]], color: 'yellow'},        // Куб
+    {coords: [[0,0],[1,0],[2,0],[3,0]], color: 'cyan'},          // Палка
+    {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},        // Т
+    {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}         // S
 ];
 
-// --- ОТРИСОВКА (Метод Арканоида: одна функция на всё) ---
+// --- ОТРИСОВКА ---
 function drawRect(x, y, color){
     if(!ctx) return;
     ctx.fillStyle = color;
@@ -99,79 +100,102 @@ function drawRect(x, y, color){
     ctx.strokeStyle = '#111';
     ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
 }
-
-// Отрисовка целого игрового поля
 function drawBoard(){
     for(let r=0; r<ROWS; r++){
         for(let c=0; c<COLS; c++){
-            if(board[r][c]){
-                drawRect(c, r, board[r][c]);
-            }
+            if(board[r][c]) drawRect(c, r, board[r][c]);
         }
     }
 }
 
 // --- ОБЪЕКТ ФИГУРЫ ---
 let activePiece = null;
-let dropInterval = 800;
-let lastTime = 0;
+let dropSpeed = 800; 
+let lastDrop = 0;
 let gameScore = 0;
 let gameActive = false;
-let fallTimer = null;
 
 function createPiece(){
     const index = Math.floor(Math.random() * SHAPES.length);
     const shape = SHAPES[index];
-    return {
-        x: Math.floor(COLS / 2) - 2, // Стартовая позиция X
-        y: 0,                        // Наверху
-        coords: shape.coords,
-        color: shape.color
-    };
+    return { x: Math.floor(COLS / 2) - 2, y: 0, coords: shape.coords, color: shape.color };
 }
 
-// Функция рисования текущей падающей фигуры
 function drawPiece(piece){
     piece.coords.forEach(block => {
         let px = piece.x + block[0];
         let py = piece.y + block[1];
-        // Проверяем границы, чтобы не упасть в ошибку за пределами холста
         if(px >= 0 && py >= 0 && px < COLS && py < ROWS){
             drawRect(px, py, piece.color);
         }
     });
 }
 
-// Проверка столкновений (упрощенная)
+// Проверка столкновений
 function checkCollision(piece, offsetX, offsetY){
     for(let i=0; i<piece.coords.length; i++){
         let px = piece.x + piece.coords[i][0] + offsetX;
         let py = piece.y + piece.coords[i][1] + offsetY;
-        
         if(px < 0 || px >= COLS || py >= ROWS) return true;
         if(py >= 0 && board[py][px]) return true;
     }
     return false;
 }
 
+// --- ВРАЩЕНИЕ (Матрица поворота 90 градусов) ---
+function rotateCoords(coords){
+    let maxSize = 4;
+    let matrix = Array.from({length: maxSize}, () => Array(maxSize).fill(0));
+    
+    // Рисуем фигуру во временную матрицу
+    coords.forEach(b => matrix[b[1]][b[0]] = 1);
+    
+    // Поворачиваем матрицу (транспонирование + реверс строк)
+    let rotated = matrix[0].map((val, index) => 
+        matrix.map(row => row[index]).reverse()
+    );
+    
+    // Собираем новые координаты из повернутой матрицы
+    let newCoords = [];
+    for(let r=0; r<maxSize; r++){
+        for(let c=0; c<maxSize; c++){
+            if(rotated[r][c]) newCoords.push([c, r]);
+        }
+    }
+    
+    // Центрируем фигуру относительно её центра масс
+    let offsetX = Math.floor(newCoords.length / 2);
+    return newCoords.map(p => [p[0] - offsetX, p[1]]);
+}
+
 // --- ЛОГИКА ДВИЖЕНИЯ ---
 function moveDown(){
-    if(!checkCollision(activePiece, 0, 1)){
-        activePiece.y++;
-    } else {
-        lockPiece();
-        clearLines();
-        activePiece = createPiece();
-        if(checkCollision(activePiece, 0, 0)) endGame();
+    if(Date.now() - lastDrop > dropSpeed){
+        lastDrop = Date.now();
+        if(!checkCollision(activePiece, 0, 1)){
+            activePiece.y++;
+        } else {
+            lockPiece(); clearLines(); 
+            activePiece = createPiece();
+            if(checkCollision(activePiece, 0, 0)) endGame();
+        }
     }
 }
 function moveLeft(){ if(!checkCollision(activePiece, -1, 0)) activePiece.x--; }
 function moveRight(){ if(!checkCollision(activePiece, 1, 0)) activePiece.x++; }
 function rotatePiece(){
-    // В этой упрощенной версии пока пропустим вращение для стабильности
+    let rotated = rotateCoords(activePiece.coords);
+    let kick = 0;
+    if(checkCollision({...activePiece, coords: rotated}, 0, 0)){
+        activePiece.x > COLS/2 ? kick = -1 : kick = 1;
+    }
+    if(!checkCollision({...activePiece, coords: rotated}, kick, 0)){
+        activePiece.coords = rotated;
+        activePiece.x += kick;
+    }
 }
 
-// "Заморозка" фигуры доске
+// --- ЗАМОРОЗКА И ОЧИСТКА ---
 function lockPiece(){
     activePiece.coords.forEach(block => {
         let px = activePiece.x + block[0];
@@ -179,82 +203,74 @@ function lockPiece(){
         if(py >= 0) board[py][px] = activePiece.color;
     });
 }
-
-// Очистка рядов (+10 очков)
 function clearLines(){
     let rowCount = 0;
     outer: for(let r=0; r<ROWS; r++){
-        for(let c=0; c<COLS; c++){
-            if(!board[r][c]) continue outer;
-        }
-        // Ряд полон
-        for(let y=r; y > 0; y--){
-            board[y] = [...board[y-1]];
-        }
-        board[0] = new Array(COLS).fill(0);
+        for(let c=0; c<COLS; c++){ if(!board[r][c]) continue outer; }
+        board.splice(r, 1);
+        board.unshift(new Array(COLS).fill(0));
         rowCount++;
     }
     if(rowCount > 0){
         gameScore += rowCount * 10;
-        scoreDiv.textContent = "ОЧКИ: " + gameScore;
+        updateScore();
     }
+}
+
+// --- РЕЙТИНГ ---
+function saveScore(score){
+    let scores = JSON.parse(localStorage.getItem('tetrisRating')) || [];
+    scores.push(score);
+    scores.sort((a,b)=> b - a);
+    localStorage.setItem('tetrisRating', JSON.stringify(scores.slice(0,5)));
+}
+function renderScores(){
+    ratingList.innerHTML = '';
+    let scores = JSON.parse(localStorage.getItem('tetrisRating')) || [];
+    scores.forEach(s => {
+        let li = document.createElement('li');
+        li.textContent = s;
+        ratingList.appendChild(li);
+    });
 }
 
 // --- ЦИКЛ ИГРЫ ---
-function gameLoop(timeStamp = 0){
+function gameLoop(timeStamp){
     if(!gameActive) return;
-    
-    const delta = timeStamp - lastTime;
-    if(delta > dropInterval){
-        lastTime = timeStamp;
-        moveDown();
-    }
-    
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height); // Принудительная очистка кадра
-    drawBoard();
-    drawPiece(activePiece);
-    
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawBoard(); drawPiece(activePiece);
     requestAnimationFrame(gameLoop);
+    moveDown();
 }
 
+// --- УПРАВЛЕНИЕ СОСТОЯНИЕМ ---
 function startGame(){
     gameActive = true;
     activePiece = createPiece();
-    updateScore();
+    updateScore(); renderScores();
     requestAnimationFrame(gameLoop);
-    fallTimer = setInterval(moveDown, dropInterval);
     controls.classList.remove('inactive'); controls.classList.add('active');
 }
-
 function endGame(){
     gameActive = false;
-    clearInterval(fallTimer);
+    saveScore(gameScore);
     finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
+    renderScores();
     gameOverModal.style.display = 'flex';
     controls.classList.remove('active'); controls.classList.add('inactive');
 }
-
 function resetGame(){
     gameOverModal.style.display = 'none';
-    board = []; 
-    for(let r=0; r<ROWS; r++) board[r] = new Array(COLS).fill(0);
+    board = []; for(let r=0; r<ROWS; r++) board[r] = new Array(COLS).fill(0);
     gameScore = 0;
     startGame();
 }
-
 function updateScore(){
     scoreDiv.textContent = "ОЧКИ: " + gameScore;
 }
 
-// --- ЗАПУСК ---
-document.addEventListener('DOMContentLoaded', () => {
-    addLog("Старт...");
-    startGame();
-});
-
-// Для диагностики (можно удалить если заработает)
-function addLog(msg){ /* console.log(msg); */ }
+// --- СТАРТ ---
+document.addEventListener('DOMContentLoaded', startGame);
 
 </script>
 
