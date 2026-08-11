@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Тетрис - Мобильная версия</title>
+    <title>Тетрис - Финал</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
     <style>
@@ -35,21 +35,20 @@
         }
         .control-btn:active { background: rgba(255,255,255,0.4); }
 
-        /* --- МОДАЛЬНОЕ ОКНО ДЛЯ МОБИЛЬНЫХ --- */
+        /* --- МОДАЛЬНОЕ ОКНО СКРЫТО ПРИ СТАРТЕ --- */
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(10, 0, 0, 0.95); color: white; z-index: 100; 
-            display: none; text-align: center; width: 95vw; max-width: 380px; 
+            display: none; /* Главное изменение: изначально невидимо */
+            text-align: center; width: 95vw; max-width: 380px; 
             padding: 15px 10px 20px 10px;
             border-radius: 15px;
             
-            /* Flex для вертикальной укладки блоков */
             display: flex;
             flex-direction: column;
-            gap: 12px; /* Расстояние между красными блоками */
+            gap: 12px;
         }
 
-        /* Красные блоки для текста */
         .modal-block {
             border: 2px solid red;
             border-radius: 8px;
@@ -70,14 +69,13 @@
             color: #0f0; 
             text-align: left; 
             padding-left: 0; 
-            max-height: 140px; /* Занимает больше всего места */
+            max-height: 140px; 
             overflow-y: auto; 
             margin: 0;
             font-size: 16px;
         }
         #rating-list li { margin-bottom: 4px; }
 
-        /* Кнопка БЕЗ КРАСНОЙ РАМКИ, растянутая на всю ширину */
         #restart-btn-final {
             width: 100%;
             padding: 16px 0; 
@@ -108,26 +106,10 @@
 
 <!-- ИНТЕРФЕЙС КОНЦА ИГРЫ -->
 <div id="game-over-modal">
-    
-    <!-- Блок 1: Заголовок (Маленький) -->
-    <div class="modal-block title-block">
-        <div class="modal-title">КОНЕЦ ИГРЫ</div>
-    </div>
-    
-    <!-- Блок 2: Счет (Маленький) -->
-    <div class="modal-block score-block">
-        <div class="score-display" id="final-score"></div>
-    </div>
-    
-    <!-- Блок 3: Рейтинг (Большой + Прокрутка) -->
-    <div class="modal-block rating-block">
-        <h3>ТОП-5 РЕЗУЛЬТАТОВ:</h3>
-        <ol id="rating-list"></ol>
-    </div>
-    
-    <!-- Элемент 4: Кнопка (Без рамки, снизу) -->
+    <div class="modal-block title-block"><div class="modal-title">КОНЕЦ ИГРЫ</div></div>
+    <div class="modal-block score-block"><div class="score-display" id="final-score"></div></div>
+    <div class="modal-block rating-block"><h3>ТОП-5 РЕЗУЛЬТАТОВ:</h3><ol id="rating-list"></ol></div>
     <button id="restart-btn-final" onclick="resetGame()">Играть снова</button>
-    
 </div>
 
 <script defer>
@@ -151,13 +133,13 @@ for(let r=0; r<ROWS; r++){ board[r] = new Array(COLS).fill(0); }
 
 // --- ФИГУРЫ ---
 const SHAPES = [
-    {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},           // Z
-    {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},          // L
-    {coords: [[0,0],[0,1],[1,1],[2,1]], color: 'lime'},          // Гамма
-    {coords: [[0,0],[0,1],[1,0],[1,1]], color: 'yellow'},        // Куб
-    {coords: [[0,0],[1,0],[2,0],[3,0]], color: 'cyan'},          // Палка
-    {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},        // Т
-    {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}         // S
+    {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},           
+    {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},          
+    {coords: [[0,0],[0,1],[1,1],[2,1]], color: 'lime'},          
+    {coords: [[0,0],[0,1],[1,0],[1,1]], color: 'yellow'},        
+    {coords: [[0,0],[1,0],[2,0],[3,0]], color: 'cyan'},          
+    {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},        
+    {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}         
 ];
 
 // --- ОТРИСОВКА ---
@@ -181,7 +163,7 @@ let activePiece = null;
 let lastDrop = 0;
 let dropSpeed = 800; 
 let gameScore = 0;
-let gameActive = false;
+let gameActive = false; // Флаг состояния
 
 function createPiece(){
     const index = Math.floor(Math.random() * SHAPES.length);
@@ -210,7 +192,7 @@ function checkCollision(piece, offsetX, offsetY){
     return false;
 }
 
-// --- ВРАЩЕНИЕ (360 градусов) ---
+// --- ВРАЩЕНИЕ ---
 function rotateCoords(coords){
     let minX = Math.min(...coords.map(p=>p[0]));
     let maxX = Math.max(...coords.map(p=>p[0]));
@@ -256,13 +238,14 @@ function applyKick(current, rotated){
 }
 
 function rotatePiece(){
-    if(!activePiece) return;
+    if(!gameActive) return; // Защита от нажатий после конца игры
     let rotated = rotateCoords(activePiece.coords);
     applyKick(activePiece.coords, rotated);
 }
 
 // --- ЛОГИКА ДВИЖЕНИЯ ---
 function moveDown(){
+    if(!gameActive) return; // Защита
     if(Date.now() - lastDrop > dropSpeed){
         lastDrop = Date.now();
         if(!checkCollision(activePiece, 0, 1)){
@@ -274,8 +257,14 @@ function moveDown(){
         }
     }
 }
-function moveLeft(){ if(!checkCollision(activePiece, -1, 0)) activePiece.x--; }
-function moveRight(){ if(!checkCollision(activePiece, 1, 0)) activePiece.x++; }
+function moveLeft(){ 
+    if(!gameActive) return; // Защита
+    if(!checkCollision(activePiece, -1, 0)) activePiece.x--; 
+}
+function moveRight(){ 
+    if(!gameActive) return; // Защита
+    if(!checkCollision(activePiece, 1, 0)) activePiece.x++; 
+}
 
 // --- ЗАМОРОЗКА И ОЧИСТКА ---
 function lockPiece(){
@@ -325,7 +314,7 @@ function endGame(){
     saveScore(gameScore);
     finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
     renderScores();
-    gameOverModal.style.display = 'flex';
+    gameOverModal.style.display = 'flex'; // Показываем ТОЛЬКО здесь
     controls.classList.remove('active'); controls.classList.add('inactive');
 }
 function resetGame(){
