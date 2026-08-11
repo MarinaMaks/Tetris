@@ -15,7 +15,7 @@
             overflow: hidden;
             font-family: 'Courier New', Courier, monospace;
             color: white;
-            touch-action: none; /* Критически важно для мобильников */
+            touch-action: none; /* Отключаем скролл страницы */
         }
         
         canvas {
@@ -31,15 +31,14 @@
             top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.9);
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 100;
-            color: white;
-            text-align: center;
             padding: 20px;
         }
-        .start-screen h1 { font-size: 2em; margin-bottom: 10px; }
-        .start-screen p { opacity: 0.7; }
+        .start-screen h1 { font-size: 2em; margin-bottom: 10px; text-shadow: 0 0 10px lime; }
+        .start-screen p { opacity: 0.7; margin-bottom: 5px; }
 
         .controls-mobile {
             position: absolute;
@@ -50,7 +49,8 @@
             grid-template-columns: auto auto auto;
             gap: 15px;
             z-index: 10;
-            opacity: 0.7;
+            opacity: 0.8;
+            pointer-events: none; /* Кнопки не активны на стартовом экране */
         }
         .control-btn {
             width: 60px;
@@ -64,6 +64,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            pointer-events: auto; /* Включаем события для самих кнопок */
         }
         .control-btn:active { background: rgba(255, 255, 255, 0.3); }
 
@@ -71,17 +72,19 @@
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
             padding: 30px;
             border: 2px solid red;
             text-align: center;
             display: none;
             z-index: 20;
+            min-width: 80vw;
         }
         #scoreBoard ol {
             list-style-position: inside;
             padding-left: 0;
             color: cyan;
+            text-align: left;
         }
     </style>
 </head>
@@ -89,12 +92,13 @@
 
 <div class="start-screen" id="startScreen">
     <h1>🧱 ТЕТРИС</h1>
-    <p>Наклоняйте телефон влево/вправо<br>Нажмите на экран, чтобы крутить</p>
-    <p style="font-size:0.8em;">(Если наклон не работает — появятся кнопки)</p>
+    <p>Управление: экранные кнопки внизу</p>
+    <p style="font-size:0.9em;">Нажмите в любом месте экрана, чтобы начать</p>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
+<!-- Блок кнопок всегда есть в DOM, но виден только когда запущена игра -->
 <div class="controls-mobile" id="mobileControls">
     <button class="control-btn" onclick="moveLeft()">←</button>
     <button class="control-btn" onclick="rotatePiece()">⟳</button>
@@ -106,7 +110,7 @@
     <p>Ваш счет: <span id="finalScore"></span></p>
     <h3>Лучшие результаты:</h3>
     <div id="scoreBoard"><ol></ol></div>
-    <button onclick="resetGame()" style="margin-top:20px;padding:10px 20px;background:lime;border:none;font-weight:bold;">Играть снова</button>
+    <button id="resetButton" onclick="resetGame()" style="margin-top:20px;padding:10px 20px;background:lime;border:none;font-weight:bold;cursor:pointer;">Играть снова</button>
 </div>
 
 <script>
@@ -118,7 +122,7 @@ const gameOverModal = document.getElementById('gameOverModal');
 const mobileControls = document.getElementById('mobileControls');
 const startScreen = document.getElementById('startScreen');
 
-// Настройки сетки (SQ увеличен для удобства на смартфонах)
+// Настройки сетки
 const ROWS = 20;
 const COLS = 10;
 const SQ = Math.floor(window.innerWidth * 0.8 / COLS); 
@@ -127,11 +131,20 @@ canvas.height = ROWS * SQ;
 
 let board = [];
 let score = 0;
-let dropInterval = 800; // Начальная скорость
+let dropInterval = 800; // Скорость падения в мс
+let fallTimer = null;
 let gameActive = false;
-let gyroAvailable = false;
 
-// Цвета фигур
+// Матрицы фигур
+function Z(){return [[2,2,0],[0,2,2],[0,0,0]];}
+function S(){return [[0,2,2],[2,2,0],[0,0,0]];}
+function T(){return [[0,2,0],[2,2,2],[0,0,0]];}
+function O(){return [[2,2],[2,2]];}
+function L(){return [[0,0,2],[2,2,2],[0,0,0]];}
+function I(){return [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]];}
+function J(){return [[2,0,0],[2,2,2],[0,0,0]];}
+
+// Цвета [Матрица, "Цвет"]
 const PIECES = [
     [Z, "red"], 
     [S, "lime"],
@@ -141,42 +154,35 @@ const PIECES = [
     [I, "cyan"],
     [J, "orange"]
 ];
-function Z(){return [[2,2,0],[0,2,2],[0,0,0]];}
-function S(){return [[0,2,2],[2,2,0],[0,0,0]];}
-function T(){return [[0,2,0],[2,2,2],[0,0,0]];}
-function O(){return [[2,2],[2,2]];}
-function L(){return [[0,0,2],[2,2,2],[0,0,0]];}
-function I(){return [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]];}
-function J(){return [[2,0,0],[2,2,2],[0,0,0]];}
 
 let activePiece;
-let fallTimer;
 
-// Инициализация доски
+// Инициализация пустого поля
 for (let r = 0; r < ROWS; r++) {
     board[r] = new Array(COLS).fill(0);
 }
 
-// Запуск игры по первому касанию
+/* --- ЗАПУСК ИГРЫ --- */
 document.body.addEventListener('pointerdown', function(e) {
-    if (!gameActive && e.target !== resetButton) {
+    // Игнорируем нажатие на кнопку "Играть снова", чтобы не было двойного срабатывания
+    if (!gameActive && e.target.id !== 'resetButton') {
         e.preventDefault();
         hideStartScreen();
-        initGyro(); // Пытаемся включить гироскоп уже после начала
         setupGame();
     }
 });
 
 function hideStartScreen() {
     startScreen.style.display = 'none';
+    mobileControls.style.opacity = '1'; /* Показываем кнопки плавно */
 }
 
 function setupGame() {
     gameActive = true;
     score = 0;
     dropInterval = 800;
-    lastDropTime = performance.now();
     
+    // Чистим поле
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             board[r][c] = 0;
@@ -194,6 +200,7 @@ function setupGame() {
     requestAnimationFrame(gameLoop);
 }
 
+/* --- ЛОГИКА ФИГУР --- */
 function createPiece() {
     const index = Math.floor(Math.random() * PIECES.length);
     return new Piece(PIECES[index][0], PIECES[index][1]);
@@ -276,6 +283,7 @@ class Piece {
     }
 }
 
+/* --- РЕНДЕР --- */
 function drawSquare(x, y, color) {
     ctx.fillStyle = color === 0 ? '#000' : color;
     ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
@@ -291,6 +299,7 @@ function drawBoard() {
     }
 }
 
+/* --- ОЧИСТКА РЯДОВ (+10 очков) --- */
 function pSweep() {
     let rowCount = 0;
     for (let r = 0; r < ROWS; r++) {
@@ -313,6 +322,7 @@ function pSweep() {
     }
 }
 
+/* --- КОНЕЦ ИГРЫ --- */
 function endGame() {
     gameActive = false;
     clearInterval(fallTimer);
@@ -322,34 +332,13 @@ function endGame() {
     gameOverModal.style.display = 'block';
 }
 
-function resetGame() {
-    gameOverModal.style.display = 'none';
-    showStartScreen();
-}
+/* --- УПРАВЛЕНИЕ --- */
+function moveLeft() { if (gameActive) activePiece.moveLeft(); }
+function moveRight() { if (gameActive) activePiece.moveRight(); }
+function moveDown() { if (gameActive) activePiece.moveDown(); }
+function rotatePiece() { if (gameActive) activePiece.rotate(); }
 
-function showStartScreen() {
-    startScreen.style.display = 'flex';
-    gameActive = false;
-    clearInterval(fallTimer);
-}
-
-// Управление
-document.addEventListener('keydown', function(e) {
-    if (!gameActive) return;
-    if (e.key === 'ArrowLeft') moveLeft();
-    else if (e.key === 'ArrowRight') moveRight();
-    else if (e.key === 'q') rotatePiece();
-});
-
-document.body.addEventListener('touchend', function(e){
-    if (gameActive) rotatePiece();
-}, {passive: false});
-
-function moveLeft() { activePiece.moveLeft(); }
-function moveRight() { activePiece.moveRight(); }
-function moveDown() { activePiece.moveDown(); }
-function rotatePiece() { activePiece.rotate(); }
-
+/* --- ЦИКЛ ОТРИСОВКИ --- */
 function gameLoop() {
     if (!gameActive) return;
     drawBoard();
@@ -357,27 +346,26 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// Гироскоп (включается только если сработал первый тап)
-function initGyro() {
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', handleGyro);
-        gyroAvailable = true;
-    }
-}
-function handleGyro(event) {
-    if (!gameActive) return;
-    const x = event.accelerationIncludingGravity?.x || 0;
-    if (x > 1) moveRight();
-    if (x < -1) moveLeft();
+/* --- СБРОС И РЕЙТИНГ --- */
+function resetGame() {
+    gameOverModal.style.display = 'none';
+    showStartScreen();
 }
 
-// Рейтинг
+function showStartScreen() {
+    startScreen.style.display = 'flex';
+    mobileControls.style.opacity = '0.3'; /* Приглушаем кнопки на старте */
+    gameActive = false;
+    clearInterval(fallTimer);
+}
+
 function saveScore(newScore) {
     let scores = JSON.parse(localStorage.getItem('tetrisScores')) || [];
     scores.push(newScore);
     scores.sort((a, b) => b - a);
     localStorage.setItem('tetrisScores', JSON.stringify(scores.slice(0, 5)));
 }
+
 function renderScores() {
     scoreList.innerHTML = '';
     let scores = JSON.parse(localStorage.getItem('tetrisScores')) || [];
@@ -387,6 +375,8 @@ function renderScores() {
         scoreList.appendChild(li);
     });
 }
+renderScores();
+
 </script>
 
 </body>
