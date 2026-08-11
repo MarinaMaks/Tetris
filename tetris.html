@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Тетрис</title>
     <style>
+        * { padding: 0; margin: 0; box-sizing: border-box; }
+        
         body {
-            margin: 0;
             background-color: #000;
             display: flex;
             justify-content: center;
@@ -15,33 +16,45 @@
             overflow: hidden;
             font-family: 'Courier New', Courier, monospace;
             color: white;
-            touch-action: none; /* Отключаем скролл страницы */
+            touch-action: none;
         }
         
         canvas {
-            border: 2px solid lime;
+            border: 3px solid lime;
             image-rendering: pixelated;
-            max-width: 95vw;
-            max-height: 85vh;
-            box-sizing: border-box;
+            max-width: 100%;
+            max-height: 90vh;
+            aspect-ratio: 10 / 20; /* Фиксированное соотношение сторон тетриса */
         }
 
         .start-screen {
             position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
+            inset: 0;
+            background: rgba(0, 0, 0, 0.95);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 100;
-            padding: 20px;
+            gap: 15px;
+            text-align: center;
+            pointer-events: none;
         }
-        .start-screen h1 { font-size: 2em; margin-bottom: 10px; text-shadow: 0 0 10px lime; }
-        .start-screen p { opacity: 0.7; margin-bottom: 5px; }
+        .start-screen h1 { 
+            font-size: clamp(1.5em, 8vw, 3em); 
+            text-shadow: 0 0 15px lime;
+        }
+        .start-screen p { opacity: 0.8; font-size: clamp(0.9em, 4vw, 1.2em); }
+        .tap-hint {
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.6; }
+        }
 
         .controls-mobile {
-            position: absolute;
+            position: fixed;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
@@ -49,55 +62,61 @@
             grid-template-columns: auto auto auto;
             gap: 15px;
             z-index: 10;
-            opacity: 0.8;
-            pointer-events: none; /* Кнопки не активны на стартовом экране */
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
         }
+        .controls-mobile.active { opacity: 0.9; pointer-events: all; }
         .control-btn {
-            width: 60px;
-            height: 60px;
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
-            border: 2px solid white;
+            border: 3px solid white;
             background: rgba(255, 255, 255, 0.1);
             color: white;
-            font-size: 24px;
+            font-size: 28px;
             cursor: pointer;
             display: flex;
             justify-content: center;
             align-items: center;
-            pointer-events: auto; /* Включаем события для самих кнопок */
+            backdrop-filter: blur(5px);
         }
         .control-btn:active { background: rgba(255, 255, 255, 0.3); }
 
         #gameOverModal {
-            position: absolute;
+            position: fixed;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 30px;
-            border: 2px solid red;
+            background: rgba(0, 0, 0, 0.98);
+            padding: 25px;
+            border: 3px solid red;
             text-align: center;
             display: none;
             z-index: 20;
             min-width: 80vw;
+            border-radius: 15px;
         }
         #scoreBoard ol {
             list-style-position: inside;
             padding-left: 0;
             color: cyan;
             text-align: left;
+            max-height: 150px;
+            overflow-y: auto;
         }
+        #scoreBoard li { padding: 5px 0; border-bottom: 1px solid #333; }
     </style>
 </head>
 <body>
 
 <div class="start-screen" id="startScreen">
     <h1>🧱 ТЕТРИС</h1>
-    
+    <p>Управление только кнопками внизу</p>
+    <div class="tap-hint">Нажмите в любом месте, чтобы начать</div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
-<!-- Блок кнопок всегда есть в DOM, но виден только когда запущена игра -->
 <div class="controls-mobile" id="mobileControls">
     <button class="control-btn" onclick="moveLeft()">←</button>
     <button class="control-btn" onclick="rotatePiece()">⟳</button>
@@ -105,11 +124,11 @@
 </div>
 
 <div id="gameOverModal">
-    <h2 style="color:red;">GAME OVER</h2>
+    <h2 style="color:red; margin-top:0;">GAME OVER</h2>
     <p>Ваш счет: <span id="finalScore"></span></p>
-    <h3>Лучшие результаты:</h3>
+    <h3 style="margin: 15px 0 10px 0;">Лучшие результаты:</h3>
     <div id="scoreBoard"><ol></ol></div>
-    <button id="resetButton" onclick="resetGame()" style="margin-top:20px;padding:10px 20px;background:lime;border:none;font-weight:bold;cursor:pointer;">Играть снова</button>
+    <button id="resetButton" onclick="resetGame()" style="margin-top:15px;padding:12px 25px;background:lime;border:none;font-weight:bold;cursor:pointer;border-radius:8px;">Играть снова</button>
 </div>
 
 <script>
@@ -124,17 +143,31 @@ const startScreen = document.getElementById('startScreen');
 // Настройки сетки
 const ROWS = 20;
 const COLS = 10;
-const SQ = Math.floor(window.innerWidth * 0.8 / COLS); 
-canvas.width = COLS * SQ;
-canvas.height = ROWS * SQ;
+let SQ; // Размер клетки будет вычислен динамически
+
+function resizeCanvas() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    
+    // Ограничиваем ширину, чтобы кнопки не уезжали за края
+    const targetWidth = Math.min(vw * 0.95, 500);
+    SQ = Math.floor(targetWidth / COLS);
+    
+    canvas.width = COLS * SQ;
+    canvas.height = ROWS * SQ;
+    
+    // Центрируем канвас через CSS свойства тела (уже настроено)
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas(); // Первый вызов при загрузке
 
 let board = [];
 let score = 0;
-let dropInterval = 800; // Скорость падения в мс
+let dropInterval = 800;
 let fallTimer = null;
 let gameActive = false;
 
-// Матрицы фигур
+/* --- ФИГУРЫ --- */
 function Z(){return [[2,2,0],[0,2,2],[0,0,0]];}
 function S(){return [[0,2,2],[2,2,0],[0,0,0]];}
 function T(){return [[0,2,0],[2,2,2],[0,0,0]];}
@@ -142,30 +175,17 @@ function O(){return [[2,2],[2,2]];}
 function L(){return [[0,0,2],[2,2,2],[0,0,0]];}
 function I(){return [[0,0,0,0],[2,2,2,2],[0,0,0,0],[0,0,0,0]];}
 function J(){return [[2,0,0],[2,2,2],[0,0,0]];}
-
-// Цвета [Матрица, "Цвет"]
-const PIECES = [
-    [Z, "red"], 
-    [S, "lime"],
-    [T, "yellow"],
-    [O, "blue"],
-    [L, "purple"], 
-    [I, "cyan"],
-    [J, "orange"]
-];
+const PIECES = [ [Z,"red"], [S,"lime"], [T,"yellow"], [O,"blue"], [L,"purple"], [I,"cyan"], [J,"orange"] ];
 
 let activePiece;
 
-// Инициализация пустого поля
+/* --- ИНИЦИАЛИЗАЦИЯ --- */
 for (let r = 0; r < ROWS; r++) {
     board[r] = new Array(COLS).fill(0);
 }
 
-/* --- ЗАПУСК ИГРЫ --- */
 document.body.addEventListener('pointerdown', function(e) {
-    // Игнорируем нажатие на кнопку "Играть снова", чтобы не было двойного срабатывания
     if (!gameActive && e.target.id !== 'resetButton') {
-        e.preventDefault();
         hideStartScreen();
         setupGame();
     }
@@ -173,7 +193,7 @@ document.body.addEventListener('pointerdown', function(e) {
 
 function hideStartScreen() {
     startScreen.style.display = 'none';
-    mobileControls.style.opacity = '1'; /* Показываем кнопки плавно */
+    setTimeout(() => mobileControls.classList.add('active'), 300);
 }
 
 function setupGame() {
@@ -181,7 +201,6 @@ function setupGame() {
     score = 0;
     dropInterval = 800;
     
-    // Чистим поле
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             board[r][c] = 0;
@@ -192,17 +211,14 @@ function setupGame() {
     renderScores();
     
     clearInterval(fallTimer);
-    fallTimer = setInterval(() => {
-        moveDown();
-    }, dropInterval);
+    fallTimer = setInterval(moveDown, dropInterval);
     
     requestAnimationFrame(gameLoop);
 }
 
-/* --- ЛОГИКА ФИГУР --- */
+/* --- КЛАСС ФИГУРЫ --- */
 function createPiece() {
-    const index = Math.floor(Math.random() * PIECES.length);
-    return new Piece(PIECES[index][0], PIECES[index][1]);
+    return new Piece(PIECES[Math.floor(Math.random() * PIECES.length)][0], PIECES[Math.floor(Math.random() * PIECES.length)][1]);
 }
 
 class Piece {
@@ -213,69 +229,52 @@ class Piece {
         this.x = 3;
         this.y = -2;
     }
-    
-    fill(colorVal) {
-        for (let r = 0; r < this.tetromino[this.activeTetromino].length; r++) {
-            for (let c = 0; c < this.tetromino[this.activeTetromino][r].length; c++) {
-                if (this.tetromino[this.activeTetromino][r][c]) {
-                    drawSquare(this.x + c, this.y + r, colorVal);
-                }
+    fill(colorVal){ 
+        for(let r=0; r<this.tetromino[this.activeTetromino].length; r++){
+            for(let c=0; c<this.tetromino[this.activeTetromino][r].length; c++){
+                if(this.tetromino[this.activeTetromino][r][c]) drawSquare(this.x+c, this.y+r, colorVal);
             }
         }
     }
-    draw() { this.fill(this.color); }
-    undraw() { this.fill(0); }
-
-    moveDown() {
-        if (!this.collision(0, 1, this.activeTetromino)) {
-            this.undraw();
-            this.y++;
-            this.draw();
+    draw(){ this.fill(this.color); }
+    undraw(){ this.fill(0); }
+    moveDown(){
+        if(!this.collision(0, 1, this.activeTetromino)){
+            this.undraw(); this.y++; this.draw();
         } else {
-            this.lock();
-            pSweep();
+            this.lock(); pSweep(); 
             activePiece = createPiece();
-            if (this.collision(0, 0, this.activeTetromino)) {
-                endGame();
-            }
+            if(this.collision(0, 0, this.activeTetromino)) endGame();
         }
     }
-    moveLeft() { if (!this.collision(-1, 0, this.activeTetromino)) { this.undraw(); this.x--; this.draw(); } }
-    moveRight() { if (!this.collision(1, 0, this.activeTetromino)) { this.undraw(); this.x++; this.draw(); } }
-    
-    rotate() {
+    moveLeft(){ if(!this.collision(-1, 0, this.activeTetromino)){ this.undraw(); this.x--; this.draw(); } }
+    moveRight(){ if(!this.collision(1, 0, this.activeTetromino)){ this.undraw(); this.x++; this.draw(); } }
+    rotate(){
         let nextPattern = (this.activeTetromino + 1) % this.tetromino.length;
         let kick = 0;
-        if (this.collision(0, 0, nextPattern)) {
-            this.x > COLS / 2 ? kick = -1 : kick = 1;
-        }
-        if (!this.collision(kick, 0, nextPattern)) {
-            this.undraw();
-            this.x += kick;
-            this.activeTetromino = nextPattern;
-            this.draw();
+        if(this.collision(0, 0, nextPattern)) this.x > COLS / 2 ? kick = -1 : kick = 1;
+        if(!this.collision(kick, 0, nextPattern)){
+            this.undraw(); this.x += kick; this.activeTetromino = nextPattern; this.draw();
         }
     }
-
-    collision(offsetX, offsetY, pattern) {
-        for (let r = 0; r < this.tetromino[pattern].length; r++) {
-            for (let c = 0; c < this.tetromino[pattern][r].length; c++) {
-                if (!this.tetromino[pattern][r][c]) continue;
+    collision(offsetX, offsetY, pattern){
+        for(let r=0; r<this.tetromino[pattern].length; r++){
+            for(let c=0; c<this.tetromino[pattern][r].length; c++){
+                if(!this.tetromino[pattern][r][c]) continue;
                 let newX = this.x + c + offsetX;
                 let newY = this.y + r + offsetY;
-                if (newX < 0 || newX >= COLS || newY >= ROWS) return true;
-                if (newY < 0) continue;
-                if (board[newY][newX] !== 0) return true;
+                if(newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                if(newY < 0) continue;
+                if(board[newY][newX] !== 0) return true;
             }
         }
         return false;
     }
-
-    lock() {
-        for (let r = 0; r < this.tetromino[this.activeTetromino].length; r++) {
-            for (let c = 0; c < this.tetromino[this.activeTetromino][r].length; c++) {
-                if (!this.tetromino[this.activeTetromino][r][c]) continue;
-                if (this.y + r < 0) break;
+    lock(){
+        for(let r=0; r<this.tetromino[this.activeTetromino].length; r++){
+            for(let c=0; c<this.tetromino[this.activeTetromino][r].length; c++){
+                if(!this.tetromino[this.activeTetromino][r][c]) continue;
+                if(this.y + r < 0) break;
                 board[this.y + r][this.x + c] = this.color;
             }
         }
@@ -283,46 +282,32 @@ class Piece {
 }
 
 /* --- РЕНДЕР --- */
-function drawSquare(x, y, color) {
+function drawSquare(x, y, color){
     ctx.fillStyle = color === 0 ? '#000' : color;
     ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
-    ctx.strokeStyle = '#111';
-    ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
+    ctx.strokeStyle = '#111'; ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
+}
+function drawBoard(){
+    for(let r=0; r<ROWS; r++){ for(let c=0; c<COLS; c++){ drawSquare(c, r, board[r][c]); } }
 }
 
-function drawBoard() {
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            drawSquare(c, r, board[r][c]);
-        }
-    }
-}
-
-/* --- ОЧИСТКА РЯДОВ (+10 очков) --- */
-function pSweep() {
+/* --- ОЧИСТКА (+10 очков) --- */
+function pSweep(){
     let rowCount = 0;
-    for (let r = 0; r < ROWS; r++) {
+    for(let r=0; r<ROWS; r++){
         let isRowFull = true;
-        for (let c = 0; c < COLS; c++) {
-            if (board[r][c] === 0) { isRowFull = false; break; }
-        }
-        if (isRowFull) {
-            for (let y = r; y > 1; y--) {
-                for (let c = 0; c < COLS; c++) {
-                    board[y][c] = board[y-1][c];
-                }
-            }
-            for (let c = 0; c < COLS; c++) { board[0][c] = 0; }
+        for(let c=0; c<COLS; c++){ if(board[r][c] === 0) { isRowFull = false; break; } }
+        if(isRowFull){
+            for(let y=r; y>1; y--){ for(let c=0; c<COLS; c++){ board[y][c] = board[y-1][c]; } }
+            for(let c=0; c<COLS; c++){ board[0][c] = 0; }
             rowCount++;
         }
     }
-    if (rowCount > 0) {
-        score += rowCount * 10;
-    }
+    if(rowCount > 0) score += rowCount * 10;
 }
 
 /* --- КОНЕЦ ИГРЫ --- */
-function endGame() {
+function endGame(){
     gameActive = false;
     clearInterval(fallTimer);
     saveScore(score);
@@ -332,47 +317,42 @@ function endGame() {
 }
 
 /* --- УПРАВЛЕНИЕ --- */
-function moveLeft() { if (gameActive) activePiece.moveLeft(); }
-function moveRight() { if (gameActive) activePiece.moveRight(); }
-function moveDown() { if (gameActive) activePiece.moveDown(); }
-function rotatePiece() { if (gameActive) activePiece.rotate(); }
+function moveLeft(){ if(gameActive) activePiece.moveLeft(); }
+function moveRight(){ if(gameActive) activePiece.moveRight(); }
+function moveDown(){ if(gameActive) activePiece.moveDown(); }
+function rotatePiece(){ if(gameActive) activePiece.rotate(); }
 
-/* --- ЦИКЛ ОТРИСОВКИ --- */
-function gameLoop() {
-    if (!gameActive) return;
+/* --- ЦИКЛ --- */
+function gameLoop(){
+    if(!gameActive) return;
     drawBoard();
     activePiece.draw();
     requestAnimationFrame(gameLoop);
 }
 
-/* --- СБРОС И РЕЙТИНГ --- */
-function resetGame() {
+/* --- СБРОС --- */
+function resetGame(){
     gameOverModal.style.display = 'none';
     showStartScreen();
 }
-
-function showStartScreen() {
+function showStartScreen(){
     startScreen.style.display = 'flex';
-    mobileControls.style.opacity = '0.3'; /* Приглушаем кнопки на старте */
+    mobileControls.classList.remove('active');
     gameActive = false;
     clearInterval(fallTimer);
 }
 
-function saveScore(newScore) {
+/* --- ЛОКАЛЬНОЕ ХРАНЕНИЕ --- */
+function saveScore(newScore){
     let scores = JSON.parse(localStorage.getItem('tetrisScores')) || [];
     scores.push(newScore);
-    scores.sort((a, b) => b - a);
-    localStorage.setItem('tetrisScores', JSON.stringify(scores.slice(0, 5)));
+    scores.sort((a,b)=>b-a);
+    localStorage.setItem('tetrisScores', JSON.stringify(scores.slice(0,5)));
 }
-
-function renderScores() {
+function renderScores(){
     scoreList.innerHTML = '';
     let scores = JSON.parse(localStorage.getItem('tetrisScores')) || [];
-    scores.forEach(s => {
-        const li = document.createElement('li');
-        li.textContent = s;
-        scoreList.appendChild(li);
-    });
+    scores.forEach(s=>{ const li=document.createElement('li'); li.textContent=s; scoreList.appendChild(li); });
 }
 renderScores();
 
