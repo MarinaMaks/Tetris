@@ -2,28 +2,28 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Тетрис - Финал</title>
+    <title>Тетрис - Исправленная версия</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
     <style>
         body { 
-            margin: 0; background-color: #000; color: white; font-family: monospace; 
+            margin: 0; background-color: #000; color: white; font-family: 'Courier New', monospace; 
             display: flex; justify-content: center; align-items: flex-start; height: 100vh; overflow: hidden; position: relative;
-            padding-top: 20px; /* Поднимаем всё поле от верхнего края */
+            padding-top: 40px; /* Еще сильнее приподнимаем поле */
         }
         
         canvas {
             border: 4px solid lime;
             image-rendering: pixelated;
             width: 360px;
-            height: 640px;
+            height: 580px; /* Уменьшили высоту полотна, чтобы оставить место для кнопок внизу */
             box-sizing: border-box;
             z-index: 10;
             background-color: #000;
         }
 
         .controls-mobile {
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
             display: grid; grid-template-columns: auto auto auto; gap: 15px; z-index: 20;
             pointer-events: none; transition: opacity 0.3s;
         }
@@ -35,14 +35,47 @@
         }
         .control-btn:active { background: rgba(255,255,255,0.4); }
 
+        /* --- НОВЫЙ ИНТЕРФЕЙС ИГРЫ ОКОНЧЕНА --- */
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(50,0,0,0.95); color: red; padding: 30px; border: 3px solid red; z-index: 100; display: none;
-            text-align: center; max-width: 90vw;
+            background: rgba(20, 0, 0, 0.95); color: red; border: 3px solid red; z-index: 100; 
+            display: none; text-align: center; width: 90vw; max-width: 400px; padding: 20px;
+            border-radius: 15px;
         }
+        .modal-title { font-size: 32px; margin-bottom: 15px; letter-spacing: 2px; }
+        .score-display { font-size: 24px; margin-bottom: 20px; color: cyan; }
+        
+        .rating-container {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        .rating-container h3 { 
+            font-size: 18px; margin-bottom: 10px; color: white; border-bottom: 1px solid #444; padding-bottom: 5px; 
+        }
+        #rating-list { 
+            list-style: decimal inside; 
+            color: #0f0; 
+            text-align: left; 
+            padding-left: 0; 
+            max-height: 120px; 
+            overflow-y: auto; 
+            margin: 0;
+        }
+        #rating-list li { margin-bottom: 4px; font-size: 18px; }
+
+        #restart-btn-final {
+            padding: 14px 30px; 
+            background: lime; 
+            color: black; 
+            border: none; 
+            font-size: 20px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            border-radius: 8px;
+        }
+        #restart-btn-final:hover { filter: brightness(1.1); }
+
         #score { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 24px; z-index: 50; padding: 10px 20px; background: rgba(0,0,0,0.7); border: 2px solid lime; border-radius: 10px; }
-        #rating-list { list-style: decimal inside; color: cyan; text-align: left; padding-left: 0; max-height: 150px; overflow-y: auto; }
-        #rating-list li { margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -54,12 +87,19 @@
     <button class="control-btn" onclick="rotatePiece()">⟳</button>
     <button class="control-btn" onclick="moveRight()">→</button>
 </div>
+
+<!-- РАЗДЕЛЕННЫЙ ИНТЕРФЕЙС КОНЦА ИГРЫ -->
 <div id="game-over-modal">
-    <h2 style="margin:0;">КОНЕЦ ИГРЫ</h2>
-    <p id="final-score"></p>
-    <h3>ТОП-5:</h3>
-    <ol id="rating-list"></ol>
-    <button onclick="resetGame()" style="margin-top:15px;padding:12px 25px;background:lime;color:black;border:none;font-weight:bold;cursor:pointer;">ИГРАТЬ СНОВА</button>
+    <div class="modal-title">КОНЕЦ ИГРЫ</div>
+    
+    <div class="score-display" id="final-score"></div>
+    
+    <div class="rating-container">
+        <h3>ТОП-5 РЕЗУЛЬТАТОВ:</h3>
+        <ol id="rating-list"></ol>
+    </div>
+    
+    <button id="restart-btn-final" onclick="resetGame()">ИГРАТЬ СНОВА</button>
 </div>
 
 <script defer>
@@ -81,7 +121,7 @@ canvas.height = ROWS * SQ;
 let board = [];
 for(let r=0; r<ROWS; r++){ board[r] = new Array(COLS).fill(0); }
 
-// --- ФИГУРЫ (Координаты блоков) ---
+// --- ФИГУРЫ (Базовые формы без учета вращений) ---
 const SHAPES = [
     {coords: [[0,0],[1,0],[1,1],[2,1]], color: 'red'},           // Z
     {coords: [[0,1],[0,2],[1,0],[1,1]], color: 'blue'},          // L
@@ -91,6 +131,18 @@ const SHAPES = [
     {coords: [[0,0],[1,0],[2,0],[1,1]], color: 'purple'},        // Т
     {coords: [[1,0],[2,0],[0,1],[1,1]], color: 'orange'}         // S
 ];
+
+// Таблица сдвигов для правильного вращения (Kick Offsets)
+const KICK_TABLE = {
+    "T":   [ [[0,0],[-1,0],[0,-1],[-1,1]],  [[0,0],[1,0],[0,-1],[1,-1]] ],
+    "I":   [ [[0,0],[-2,0],[1,0],[-2,-1]],  [[0,0],[2,0],[-1,0],[2,1]], [[0,0],[1,0],[-2,0],[1,-2]], [[0,0],[-1,0],[2,0],[-1,2]] ],
+    "LQJZ":[ [[0,0],[-1,0],[0,-1],[-1,1]],  [[0,0],[1,0],[0,-1],[1,-1]] ]
+};
+
+function getShapeKey(piece){
+    const colors = {"purple":"T", "cyan":"I"};
+    return colors[piece.color] || "LQJZ";
+}
 
 // --- ОТРИСОВКА ---
 function drawRect(x, y, color){
@@ -110,15 +162,15 @@ function drawBoard(){
 
 // --- ОБЪЕКТ ФИГУРЫ ---
 let activePiece = null;
-let dropSpeed = 800; 
 let lastDrop = 0;
+let dropSpeed = 800; 
 let gameScore = 0;
 let gameActive = false;
 
 function createPiece(){
     const index = Math.floor(Math.random() * SHAPES.length);
     const shape = SHAPES[index];
-    return { x: Math.floor(COLS / 2) - 2, y: 0, coords: shape.coords, color: shape.color };
+    return { x: Math.floor(COLS / 2) - 2, y: -2, coords: shape.coords, color: shape.color };
 }
 
 function drawPiece(piece){
@@ -142,30 +194,45 @@ function checkCollision(piece, offsetX, offsetY){
     return false;
 }
 
-// --- ВРАЩЕНИЕ (Матрица поворота 90 градусов) ---
+// --- ВРАЩЕНИЕ (Исправленное) ---
 function rotateCoords(coords){
     let maxSize = 4;
     let matrix = Array.from({length: maxSize}, () => Array(maxSize).fill(0));
-    
-    // Рисуем фигуру во временную матрицу
     coords.forEach(b => matrix[b[1]][b[0]] = 1);
-    
-    // Поворачиваем матрицу (транспонирование + реверс строк)
-    let rotated = matrix[0].map((val, index) => 
-        matrix.map(row => row[index]).reverse()
-    );
-    
-    // Собираем новые координаты из повернутой матрицы
+    let rotated = matrix[0].map((val, index) => matrix.map(row => row[index]).reverse());
     let newCoords = [];
-    for(let r=0; r<maxSize; r++){
-        for(let c=0; c<maxSize; c++){
-            if(rotated[r][c]) newCoords.push([c, r]);
+    for(let r=0; r<maxSize; r++){ for(let c=0; c<maxSize; c++){ if(rotated[r][c]) newCoords.push([c, r]); } }
+    let cx = newCoords.reduce((a,b)=>a+b[0], 0)/newCoords.length;
+    let cy = newCoords.reduce((a,b)=>a+b[1], 0)/newCoords.length;
+    return newCoords.map(p => [Math.round(p[0]-cx), Math.round(p[1]-cy)]);
+}
+
+function applyKick(current, rotated, direction){
+    const key = getShapeKey(activePiece);
+    const kicks = KICK_TABLE[key][direction];
+    for(let kick of kicks){
+        let dx = kick[0], dy = kick[1];
+        if(!checkCollision({...activePiece, coords: rotated}, dx, dy)){
+            activePiece.x += dx;
+            activePiece.y += dy;
+            activePiece.coords = rotated;
+            return true;
         }
     }
+    return false;
+}
+
+function rotatePiece(){
+    if(!activePiece) return;
+    let rotated = rotateCoords(activePiece.coords);
+    let key = getShapeKey(activePiece);
     
-    // Центрируем фигуру относительно её центра масс
-    let offsetX = Math.floor(newCoords.length / 2);
-    return newCoords.map(p => [p[0] - offsetX, p[1]]);
+    if(key === "I"){ // Для палки направление важно
+        if(applyKick(activePiece.coords, rotated, 0)) return;
+        if(applyKick(activePiece.coords, rotated, 1)) return;
+    } else {
+        if(applyKick(activePiece.coords, rotated, 0)) return;
+    }
 }
 
 // --- ЛОГИКА ДВИЖЕНИЯ ---
@@ -183,17 +250,6 @@ function moveDown(){
 }
 function moveLeft(){ if(!checkCollision(activePiece, -1, 0)) activePiece.x--; }
 function moveRight(){ if(!checkCollision(activePiece, 1, 0)) activePiece.x++; }
-function rotatePiece(){
-    let rotated = rotateCoords(activePiece.coords);
-    let kick = 0;
-    if(checkCollision({...activePiece, coords: rotated}, 0, 0)){
-        activePiece.x > COLS/2 ? kick = -1 : kick = 1;
-    }
-    if(!checkCollision({...activePiece, coords: rotated}, kick, 0)){
-        activePiece.coords = rotated;
-        activePiece.x += kick;
-    }
-}
 
 // --- ЗАМОРОЗКА И ОЧИСТКА ---
 function lockPiece(){
@@ -218,21 +274,8 @@ function clearLines(){
 }
 
 // --- РЕЙТИНГ ---
-function saveScore(score){
-    let scores = JSON.parse(localStorage.getItem('tetrisRating')) || [];
-    scores.push(score);
-    scores.sort((a,b)=> b - a);
-    localStorage.setItem('tetrisRating', JSON.stringify(scores.slice(0,5)));
-}
-function renderScores(){
-    ratingList.innerHTML = '';
-    let scores = JSON.parse(localStorage.getItem('tetrisRating')) || [];
-    scores.forEach(s => {
-        let li = document.createElement('li');
-        li.textContent = s;
-        ratingList.appendChild(li);
-    });
-}
+function saveScore(score){ let scores = JSON.parse(localStorage.getItem('tetrisRating')) || []; scores.push(score); scores.sort((a,b)=> b - a); localStorage.setItem('tetrisRating', JSON.stringify(scores.slice(0,5))); }
+function renderScores(){ ratingList.innerHTML = ''; let scores = JSON.parse(localStorage.getItem('tetrisRating')) || []; scores.forEach(s=>{ let li=document.createElement('li'); li.textContent=s; ratingList.appendChild(li); }); }
 
 // --- ЦИКЛ ИГРЫ ---
 function gameLoop(timeStamp){
@@ -269,7 +312,6 @@ function updateScore(){
     scoreDiv.textContent = "ОЧКИ: " + gameScore;
 }
 
-// --- СТАРТ ---
 document.addEventListener('DOMContentLoaded', startGame);
 
 </script>
