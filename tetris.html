@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Тетрис - Финал v2</title>
+    <title>Тетрис - Мобильная версия</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     
     <style>
@@ -35,54 +35,61 @@
         }
         .control-btn:active { background: rgba(255,255,255,0.4); }
 
-        /* --- НОВЫЙ ИНТЕРФЕЙС С КРАСНЫМИ РАМКАМИ --- */
+        /* --- МОДАЛЬНОЕ ОКНО ДЛЯ МОБИЛЬНЫХ --- */
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(10, 0, 0, 0.95); color: white; z-index: 100; 
-            display: none; text-align: center; width: 90vw; max-width: 400px; padding: 15px;
+            display: none; text-align: center; width: 95vw; max-width: 380px; 
+            padding: 15px 10px 20px 10px;
             border-radius: 15px;
+            
+            /* Flex для вертикальной укладки блоков */
+            display: flex;
+            flex-direction: column;
+            gap: 12px; /* Расстояние между красными блоками */
         }
 
+        /* Красные блоки для текста */
         .modal-block {
             border: 2px solid red;
             border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 15px;
+            padding: 12px 8px;
             background: rgba(20, 0, 0, 0.7);
         }
         
         .modal-title { 
-            font-size: 28px; margin-bottom: 10px; letter-spacing: 2px; 
-            text-shadow: 0 0 5px red;
+            font-size: 24px; letter-spacing: 2px; text-shadow: 0 0 5px red;
         }
-        .score-display { font-size: 22px; margin-bottom: 10px; color: cyan; }
+        .score-display { font-size: 20px; color: cyan; }
         
         .rating-container h3 { 
-            font-size: 16px; margin-bottom: 8px; color: white; text-transform: uppercase; letter-spacing: 1px;
+            font-size: 16px; margin-bottom: 6px; color: white; text-transform: uppercase; letter-spacing: 1px;
         }
         #rating-list { 
             list-style: decimal inside; 
             color: #0f0; 
             text-align: left; 
             padding-left: 0; 
-            max-height: 100px; 
+            max-height: 140px; /* Занимает больше всего места */
             overflow-y: auto; 
             margin: 0;
             font-size: 16px;
         }
         #rating-list li { margin-bottom: 4px; }
 
+        /* Кнопка БЕЗ КРАСНОЙ РАМКИ, растянутая на всю ширину */
         #restart-btn-final {
             width: 100%;
-            padding: 14px 0; 
+            padding: 16px 0; 
             background: lime; 
             color: black; 
-            border: 2px solid red;
+            border: none;
             font-size: 20px; 
             font-weight: bold; 
             cursor: pointer; 
             border-radius: 8px;
             text-transform: uppercase;
+            box-shadow: 0 2px 0 darkgreen;
         }
         #restart-btn-final:hover { filter: brightness(1.1); }
 
@@ -99,24 +106,28 @@
     <button class="control-btn" onclick="moveRight()">→</button>
 </div>
 
-<!-- ИНТЕРФЕЙС КОНЦА ИГРЫ В БЛОКАХ -->
+<!-- ИНТЕРФЕЙС КОНЦА ИГРЫ -->
 <div id="game-over-modal">
+    
+    <!-- Блок 1: Заголовок (Маленький) -->
     <div class="modal-block title-block">
         <div class="modal-title">КОНЕЦ ИГРЫ</div>
     </div>
     
+    <!-- Блок 2: Счет (Маленький) -->
     <div class="modal-block score-block">
         <div class="score-display" id="final-score"></div>
     </div>
     
+    <!-- Блок 3: Рейтинг (Большой + Прокрутка) -->
     <div class="modal-block rating-block">
         <h3>ТОП-5 РЕЗУЛЬТАТОВ:</h3>
         <ol id="rating-list"></ol>
     </div>
     
-    <div class="modal-block button-block">
-        <button id="restart-btn-final" onclick="resetGame()">ИГРАТЬ СНОВА</button>
-    </div>
+    <!-- Элемент 4: Кнопка (Без рамки, снизу) -->
+    <button id="restart-btn-final" onclick="resetGame()">Играть снова</button>
+    
 </div>
 
 <script defer>
@@ -199,9 +210,8 @@ function checkCollision(piece, offsetX, offsetY){
     return false;
 }
 
-// --- ВРАЩЕНИЕ (Исправлено на 360 градусов) ---
+// --- ВРАЩЕНИЕ (360 градусов) ---
 function rotateCoords(coords){
-    // Находим границы фигуры
     let minX = Math.min(...coords.map(p=>p[0]));
     let maxX = Math.max(...coords.map(p=>p[0]));
     let minY = Math.min(...coords.map(p=>p[1]));
@@ -210,7 +220,6 @@ function rotateCoords(coords){
     let w = maxX - minX + 1;
     let h = maxY - minY + 1;
     
-    // Создаем матрицу точно по размеру фигуры
     let matrix = Array.from({length: h}, () => Array(w).fill(0));
     coords.forEach(b => {
         let mx = b[0] - minX;
@@ -218,45 +227,28 @@ function rotateCoords(coords){
         matrix[my][mx] = 1;
     });
     
-    // Поворот (транспонирование + реверс)
     let rotatedMatrix = matrix[0].map((val, idx) => matrix.map(row => row[idx]).reverse());
     
-    // Собираем новые координаты
     let newCoords = [];
     for(let r=0; r<rotatedMatrix.length; r++){
         for(let c=0; c<rotatedMatrix[r].length; c++){
             if(rotatedMatrix[r][c]){
-                // Возвращаем к глобальным координатам
                 newCoords.push([c + minX, r + minY]); 
             }
         }
     }
     
-    // Центрируем относительно центра масс этой новой формы
     let cx = newCoords.reduce((a,b)=>a+b[0], 0)/newCoords.length;
     let cy = newCoords.reduce((a,b)=>a+b[1], 0)/newCoords.length;
     return newCoords.map(p => [Math.round(p[0]-cx), Math.round(p[1]-cy)]);
 }
 
 function applyKick(current, rotated){
-    // Простой сдвиг у стены (пинок)
     let dx = 0;
     if(checkCollision({...activePiece, coords: rotated}, 0, 0)) return false;
     
-    // Если уперлись в правую стену при повороте
-    while(activePiece.x + Math.max(...rotated.map(p=>p[0])) >= COLS){
-        dx--;
-        if(checkCollision({...activePiece, coords: rotated}, dx, 0)){
-            dx++; break;
-        }
-    }
-    // Если уперлись в левую стену
-    while(activePiece.x + Math.min(...rotated.map(p=>p[0])) < 0){
-        dx++;
-        if(checkCollision({...activePiece, coords: rotated}, dx, 0)){
-            dx--; break;
-        }
-    }
+    while(activePiece.x + Math.max(...rotated.map(p=>p[0])) >= COLS){ dx--; if(checkCollision({...activePiece, coords: rotated}, dx, 0)){ dx++; break; } }
+    while(activePiece.x + Math.min(...rotated.map(p=>p[0])) < 0){ dx++; if(checkCollision({...activePiece, coords: rotated}, dx, 0)){ dx--; break; } }
     
     activePiece.x += dx;
     activePiece.coords = rotated;
