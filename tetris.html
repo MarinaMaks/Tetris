@@ -35,11 +35,11 @@
         }
         .control-btn:active { background: rgba(255,255,255,0.4); }
 
-        /* --- МОДАЛЬНОЕ ОКНО СКРЫТО ПРИ СТАРТЕ --- */
+        /* --- ОКНО СКРЫТО ЧЕРЕЗ CSS --- */
         #game-over-modal {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(10, 0, 0, 0.95); color: white; z-index: 100; 
-            display: none; /* Главное изменение: изначально невидимо */
+            display: none; /* Это главный предохранитель */
             text-align: center; width: 95vw; max-width: 380px; 
             padding: 15px 10px 20px 10px;
             border-radius: 15px;
@@ -163,7 +163,7 @@ let activePiece = null;
 let lastDrop = 0;
 let dropSpeed = 800; 
 let gameScore = 0;
-let gameActive = false; // Флаг состояния
+let gameActive = false;
 
 function createPiece(){
     const index = Math.floor(Math.random() * SHAPES.length);
@@ -238,14 +238,14 @@ function applyKick(current, rotated){
 }
 
 function rotatePiece(){
-    if(!gameActive) return; // Защита от нажатий после конца игры
+    if(!gameActive) return;
     let rotated = rotateCoords(activePiece.coords);
     applyKick(activePiece.coords, rotated);
 }
 
 // --- ЛОГИКА ДВИЖЕНИЯ ---
 function moveDown(){
-    if(!gameActive) return; // Защита
+    if(!gameActive) return;
     if(Date.now() - lastDrop > dropSpeed){
         lastDrop = Date.now();
         if(!checkCollision(activePiece, 0, 1)){
@@ -257,14 +257,8 @@ function moveDown(){
         }
     }
 }
-function moveLeft(){ 
-    if(!gameActive) return; // Защита
-    if(!checkCollision(activePiece, -1, 0)) activePiece.x--; 
-}
-function moveRight(){ 
-    if(!gameActive) return; // Защита
-    if(!checkCollision(activePiece, 1, 0)) activePiece.x++; 
-}
+function moveLeft(){ if(!gameActive) return; if(!checkCollision(activePiece, -1, 0)) activePiece.x--; }
+function moveRight(){ if(!gameActive) return; if(!checkCollision(activePiece, 1, 0)) activePiece.x++; }
 
 // --- ЗАМОРОЗКА И ОЧИСТКА ---
 function lockPiece(){
@@ -303,18 +297,25 @@ function gameLoop(timeStamp){
 
 // --- УПРАВЛЕНИЕ СОСТОЯНИЕМ ---
 function startGame(){
+    // ГАРАНТИРОВАННОЕ СКРЫТИЕ ПРИ СТАРТЕ
+    gameOverModal.style.display = 'none'; 
+    
     gameActive = true;
     activePiece = createPiece();
     updateScore(); renderScores();
     requestAnimationFrame(gameLoop);
     controls.classList.remove('inactive'); controls.classList.add('active');
 }
+
 function endGame(){
     gameActive = false;
     saveScore(gameScore);
     finalScoreSpan.textContent = `ВАШ СЧЕТ: ${gameScore}`;
     renderScores();
-    gameOverModal.style.display = 'flex'; // Показываем ТОЛЬКО здесь
+    
+    // ПОКАЗ ТОЛЬКО ТУТ
+    gameOverModal.style.display = 'flex'; 
+    
     controls.classList.remove('active'); controls.classList.add('inactive');
 }
 function resetGame(){
